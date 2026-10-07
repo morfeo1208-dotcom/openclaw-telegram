@@ -1,13 +1,12 @@
-FROM node:20-slim
-
-# Instalar OpenClaw globalmente
-RUN npm install -g openclaw
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copiar el archivo de configuración
-COPY agent.json .
+# Copiar e instalar dependencias
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Crear un enlace simbólico a los binarios globales y ejecutar
-CMD ["sh", "-c", "openclaw start --config agent.json || node /usr/local/lib/node_modules/openclaw/index.js"]
+# Copiar el script principal
+COPY bot.py .
 
+CMD ["python", "bot.py"]
