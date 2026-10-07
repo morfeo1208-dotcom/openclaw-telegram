@@ -8,5 +8,6 @@ WORKDIR /app
 # Copiar el archivo de configuración
 COPY agent.json .
 
-# Indicar la ruta exacta del ejecutable de openclaw
-CMD ["npx", "openclaw", "start", "--config", "agent.json"]
+# Crear un enlace simbólico a los binarios globales y ejecutar
+CMD ["sh", "-c", "openclaw start --config agent.json || node /usr/local/lib/node_modules/openclaw/index.js"]
+
