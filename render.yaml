@@ -1,0 +1,6 @@
+services:
+  - type: worker
+    name: openclaw-agent
+    env: docker
+    plan: free
+    
