@@ -1,12 +1,12 @@
 FROM node:20-slim
 
-# Instalar OpenClaw de forma global
+# Instalar OpenClaw globalmente
 RUN npm install -g openclaw
 
 WORKDIR /app
 
-# Copiar el archivo de configuración del agente
+# Copiar el archivo de configuración
 COPY agent.json .
 
-# Comando para iniciar el agente de OpenClaw
-CMD ["openclaw", "start", "--config", "agent.json"]
+# Indicar la ruta exacta del ejecutable de openclaw
+CMD ["npx", "openclaw", "start", "--config", "agent.json"]
