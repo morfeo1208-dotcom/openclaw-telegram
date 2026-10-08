@@ -1,11 +1,16 @@
 import os
+import threading
+import logging
 from flask import Flask, render_template_string, request, jsonify
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from core.orchestrator import Orchestrator
-from gtts import gTTS
 
 app = Flask(__name__)
 orquestador = Orchestrator()
+logging.basicConfig(level=logging.INFO)
 
+# --- CONFIGURACIÓN DE LA INTERFAZ WEB ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
@@ -31,11 +36,11 @@ HTML_TEMPLATE = """
     <div class="chat-container">
         <div class="header">
             <h3>🤖 OpenClaw Multiagente</h3>
-            <span style="font-size: 12px; color: #10b981;">● En línea (Gemini 3.8 Flash)</span>
+            <span style="font-size: 12px; color: #10b981;">● En línea (Web & Telegram)</span>
         </div>
         <div class="chat-box" id="chatBox"></div>
         <div class="input-area">
-            <input type="text" id="userInput" placeholder="Escribe una tarea o consulta compleja..." onkeypress="if(event.key === 'Enter') sendMessage()">
+            <input type="text" id="userInput" placeholder="Escribe una tarea o consulta..." onkeypress="if(event.key === 'Enter') sendMessage()">
             <button onclick="sendMessage()">Enviar</button>
         </div>
     </div>
@@ -76,7 +81,37 @@ def chat():
     resultado = orquestador.procesar_solicitud(user_message)
     return jsonify({'reply': resultado['texto']})
 
+
+# --- CONFIGURACIÓN DEL BOT DE TELEGRAM ---
+async def handle_telegram_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+    if not user_message:
+        return
+    
+    # Procesar con el mismo orquestador central
+    resultado = orquestador.procesar_solicitud(user_message)
+    await update.message.reply_text(resultado['texto'])
+
+def run_telegram_bot():
+    token = os.environ.get("TELEGRAM_TOKEN")
+    if not token:
+        logging.warning("TELEGRAM_TOKEN no configurado. El bot de Telegram no se iniciará.")
+        return
+    
+    # Limpiar webhooks pendientes e iniciar polling
+    application = ApplicationBuilder().token(token).build()
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_telegram_message))
+    
+    logging.info("Iniciando bot de Telegram en segundo plano...")
+    application.run_polling(drop_pending_updates=True)
+
+
 if __name__ == '__main__':
+    # Arrancar Telegram en un hilo independiente para que no bloquee a Flask
+    telegram_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    telegram_thread.start()
+
+    # Arrancar Flask para Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
+    
