@@ -3,6 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from google import genai
+from google.genai import types
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,18 +20,33 @@ async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto_usuario = update.message.text
     
     try:
+        # Configuración con la herramienta de búsqueda de Google habilitada
+        configuracion = types.GenerateContentConfig(
+            system_instruction=(
+                "Eres el secretario y asistente personal de tu usuario en Telegram. "
+                "Tienes acceso directo a búsquedas en Google en tiempo real. "
+                "Si el usuario te pregunta por noticias, eventos actuales, clima, o datos que requieran "
+                "verificación en la web, utiliza tu herramienta de búsqueda y responde de manera concisa, "
+                "amigable y eficiente."
+            ),
+            tools=[types.Tool(google_search=types.GoogleSearch())]  # Habilita Google Search Grounding
+        )
+
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=f"Eres un asistente y secretario personal eficiente. Responde formal y amablemente a esto: {texto_usuario}"
+            contents=texto_usuario,
+            config=configuracion
         )
+        
         await update.message.reply_text(response.text)
+        
     except Exception as e:
-        logging.error(f"Error generando respuesta: {e}")
-        await update.message.reply_text("Lo siento, tuve un inconveniente procesando tu solicitud.")
+        logging.error(f"Error procesando búsqueda o respuesta: {e}")
+        await update.message.reply_text("Disculpa, tuve un inconveniente buscando esa información.")
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder))
-    print("Bot activo en Render...")
+    print("Bot con búsqueda en Google activo en Render...")
     app.run_polling()
-  
+    
