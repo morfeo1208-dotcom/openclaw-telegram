@@ -43,7 +43,7 @@ async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Petición a Gemini enviándole las herramientas en la configuración
         response = client.models.generate_content(
-            model='gemini-3.5-flash',
+            model='gemini-3.8-flash',
             contents=texto_usuario,
             config=types.GenerateContentConfig(
                 system_instruction=(
