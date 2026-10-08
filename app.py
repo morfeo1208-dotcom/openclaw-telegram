@@ -31,7 +31,7 @@ HTML_TEMPLATE = """
     <div class="chat-container">
         <div class="header">
             <h3>🤖 OpenClaw Multiagente</h3>
-            <span style="font-size: 12px; color: #10b981;">● En línea (Gemini 2.5 Flash)</span>
+            <span style="font-size: 12px; color: #10b981;">● En línea (Gemini 3.8 Flash)</span>
         </div>
         <div class="chat-box" id="chatBox"></div>
         <div class="input-area">
@@ -79,4 +79,4 @@ def chat():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-  
+
