@@ -5,9 +5,8 @@ from google.genai import types
 class Orchestrator:
     def __init__(self):
         self.client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        self.model = 'gemini-2.5-flash'
-
-    def procesar_solicitud(self, mensaje_usuario: str) -> dict:
+        self.model = 'gemini-3.8-flash
+ def procesar_solicitud(self, mensaje_usuario: str) -> dict:
         """
         Analiza la petición y decide si requiere búsqueda web, respuesta general o síntesis de voz.
         """
