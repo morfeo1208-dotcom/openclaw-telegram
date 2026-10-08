@@ -40,7 +40,7 @@ async def responder(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=texto_usuario,
             config=configuracion
         )
