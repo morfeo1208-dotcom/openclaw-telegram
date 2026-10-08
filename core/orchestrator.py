@@ -5,19 +5,14 @@ from google.genai import types
 class Orchestrator:
     def __init__(self):
         self.client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        self.model = 'gemini-3.8-flash'
-        
- def procesar_solicitud(self, mensaje_usuario: str) -> dict:
-        """
-        Analiza la petición y decide si requiere búsqueda web, respuesta general o síntesis de voz.
-        """
+        self.model = 'gemini-3.8-flash'  # Actualizado aquí
+
+    def procesar_solicitud(self, mensaje_usuario: str) -> dict:
         try:
-            # Instrucción maestra de enrutamiento
             system_prompt = (
                 "Eres el Orquestador Central de un sistema multiagente de IA. "
                 "Analiza la petición del usuario y determina si requiere búsqueda en Internet (researcher) "
-                "o si puede resolverse directamente con el secretario general (secretary). "
-                "Devuelve una respuesta estructurada o procesa con la herramienta adecuada."
+                "o si puede resolverse directamente con el secretario general (secretary)."
             )
 
             config = types.GenerateContentConfig(
