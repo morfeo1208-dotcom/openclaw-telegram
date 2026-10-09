@@ -3,8 +3,8 @@ import threading
 import logging
 import tempfile
 from flask import Flask
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
 from google import genai
 from google.genai import types
 from gtts import gTTS
@@ -25,12 +25,14 @@ def run_flask():
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
+# Diccionario para guardar la preferencia de cada usuario ('voice' o 'text')
+user_modes = {}
+
 def procesar_con_ia(contenido, es_audio=False) -> str:
     try:
         system_prompt = (
             "Eres un secretario personal de IA avanzado y multiagente. "
-            "Responde de forma muy clara, concisa, directa y útil en español. "
-            "Tus respuestas serán convertidas a audio, así que evita usar caracteres especiales, listas complejas o emojis excesivos."
+            "Responde de forma muy clara, concisa, directa y útil en español."
         )
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -38,14 +40,13 @@ def procesar_con_ia(contenido, es_audio=False) -> str:
         )
         
         if es_audio:
-            # Subir nota de voz especificando mime_type para evitar rechazo de la API
             audio_file = client.files.upload(
                 file=contenido,
                 config=types.UploadFileConfig(mime_type='audio/ogg')
             )
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=[audio_file, "Escucha este mensaje de voz del usuario y responde a su solicitud de forma directa."],
+                contents=[audio_file, "Escucha este mensaje de voz del usuario y responde a su solicitud."],
                 config=config
             )
         else:
@@ -54,43 +55,70 @@ def procesar_con_ia(contenido, es_audio=False) -> str:
                 contents=contenido,
                 config=config
             )
-            
         return response.text
     except Exception as e:
         logger.error(f"Error con Gemini API: {e}")
         return "Disculpa, tuve un pequeño problema al procesar la solicitud."
 
-# Función auxiliar para convertir cualquier texto de respuesta en una NOTA DE VOZ de Telegram
-async def responder_con_voz(update: Update, texto_respuesta: str):
-    await update.message.chat.send_action("record_voice")
-    tmp_out_path = None
-    try:
-        tts = gTTS(text=texto_respuesta, lang='es')
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
-            tmp_out_path = tmp_out.name
-            tts.save(tmp_out_path)
-            
-        with open(tmp_out_path, 'rb') as audio_response:
-            await update.message.reply_voice(voice=audio_response)
-    except Exception as e:
-        logger.error(f"Error generando audio gTTS: {e}")
-        # Si falla el audio por algún motivo, envía el texto como respaldo
-        await update.message.reply_text(texto_respuesta)
-    finally:
-        if tmp_out_path and os.path.exists(tmp_out_path):
-            os.remove(tmp_out_path)
+# Comando para abrir el selector de modo
+async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [
+            InlineKeyboardButton("🎤 Responder con Voz", callback_data="mode_voice"),
+            InlineKeyboardButton("✍️ Responder con Texto", callback_data="mode_text"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("¿Cómo prefieres que te responda a partir de ahora?", reply_markup=reply_markup)
 
-# Manejador si le escribes TEXTO -> Responde con NOTA DE VOZ
+# Manejar los clics de los botones
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    
+    if query.data == "mode_voice":
+        user_modes[user_id] = "voice"
+        await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Notas de Voz**.")
+    elif query.data == "mode_text":
+        user_modes[user_id] = "text"
+        await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Texto**.")
+
+# Función inteligente para enviar la respuesta según el modo elegido por el usuario
+async def enviar_respuesta(update: Update, texto_respuesta: str):
+    user_id = update.effective_user.id
+    modo = user_modes.get(user_id, "voice")  # Por defecto responde con voz si no ha elegido
+    
+    if modo == "text":
+        await update.message.reply_text(texto_respuesta)
+    else:
+        await update.message.chat.send_action("record_voice")
+        tmp_out_path = None
+        try:
+            tts = gTTS(text=texto_respuesta, lang='es')
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
+                tmp_out_path = tmp_out.name
+                tts.save(tmp_out_path)
+                
+            with open(tmp_out_path, 'rb') as audio_response:
+                await update.message.reply_voice(voice=audio_response)
+        except Exception as e:
+            logger.error(f"Error generando audio gTTS: {e}")
+            await update.message.reply_text(texto_respuesta)
+        finally:
+            if tmp_out_path and os.path.exists(tmp_out_path):
+                os.remove(tmp_out_path)
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
         return
     logger.info(f"Texto recibido: {user_text}")
+    await update.message.chat.send_action("typing")
     
     respuesta_texto = procesar_con_ia(user_text, es_audio=False)
-    await responder_con_voz(update, respuesta_texto)
+    await enviar_respuesta(update, respuesta_texto)
 
-# Manejador si le envías NOTA DE VOZ -> Responde con NOTA DE VOZ
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Nota de voz recibida")
     await update.message.chat.send_action("typing")
@@ -105,7 +133,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await voice_file.download_to_drive(tmp_in_path)
             
         respuesta_texto = procesar_con_ia(tmp_in_path, es_audio=True)
-        await responder_con_voz(update, respuesta_texto)
+        await enviar_respuesta(update, respuesta_texto)
     finally:
         if tmp_in_path and os.path.exists(tmp_in_path):
             os.remove(tmp_in_path)
@@ -120,6 +148,12 @@ def main():
         return
     
     application = ApplicationBuilder().token(token).build()
+    
+    # Comandos y Botones
+    application.add_handler(CommandHandler("modo", modo_command))
+    application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Mensajes
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     
@@ -128,4 +162,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                
+        
