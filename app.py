@@ -12,7 +12,6 @@ from gtts import gTTS
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Servidor Flask obligatorio para mantener el puerto de Render en verde
 app = Flask(__name__)
 
 @app.route('/')
@@ -24,14 +23,14 @@ def run_flask():
     logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
-# Cliente de IA
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def procesar_con_ia(contenido, es_audio=False) -> str:
     try:
         system_prompt = (
             "Eres un secretario personal de IA avanzado y multiagente. "
-            "Responde de forma clara, directa, concisa y útil en español."
+            "Responde de forma muy clara, concisa, directa y útil en español. "
+            "Tus respuestas serán convertidas a audio, así que evita usar caracteres especiales, listas complejas o emojis excesivos."
         )
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -39,15 +38,14 @@ def procesar_con_ia(contenido, es_audio=False) -> str:
         )
         
         if es_audio:
-            logger.info("Subiendo archivo de audio a Gemini API...")
-            # Especificar el mime_type para asegurar que Gemini entienda la nota de voz de Telegram (.ogg)
+            # Subir nota de voz especificando mime_type para evitar rechazo de la API
             audio_file = client.files.upload(
                 file=contenido,
                 config=types.UploadFileConfig(mime_type='audio/ogg')
             )
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=[audio_file, "Escucha este mensaje de voz atentamente y responde a la petición del usuario de forma útil."],
+                contents=[audio_file, "Escucha este mensaje de voz del usuario y responde a su solicitud de forma directa."],
                 config=config
             )
         else:
@@ -59,63 +57,58 @@ def procesar_con_ia(contenido, es_audio=False) -> str:
             
         return response.text
     except Exception as e:
-        logger.error(f"Error detallado en procesar_con_ia: {e}")
-        raise e
+        logger.error(f"Error con Gemini API: {e}")
+        return "Disculpa, tuve un pequeño problema al procesar la solicitud."
 
-# Manejador de texto (Responde con texto)
+# Función auxiliar para convertir cualquier texto de respuesta en una NOTA DE VOZ de Telegram
+async def responder_con_voz(update: Update, texto_respuesta: str):
+    await update.message.chat.send_action("record_voice")
+    tmp_out_path = None
+    try:
+        tts = gTTS(text=texto_respuesta, lang='es')
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
+            tmp_out_path = tmp_out.name
+            tts.save(tmp_out_path)
+            
+        with open(tmp_out_path, 'rb') as audio_response:
+            await update.message.reply_voice(voice=audio_response)
+    except Exception as e:
+        logger.error(f"Error generando audio gTTS: {e}")
+        # Si falla el audio por algún motivo, envía el texto como respaldo
+        await update.message.reply_text(texto_respuesta)
+    finally:
+        if tmp_out_path and os.path.exists(tmp_out_path):
+            os.remove(tmp_out_path)
+
+# Manejador si le escribes TEXTO -> Responde con NOTA DE VOZ
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
         return
     logger.info(f"Texto recibido: {user_text}")
-    await update.message.chat.send_action("typing")
-    try:
-        respuesta = procesar_con_ia(user_text, es_audio=False)
-        await update.message.reply_text(respuesta)
-    except Exception as e:
-        await update.message.reply_text("Disculpa, tuve un fallo técnico procesando tu mensaje.")
+    
+    respuesta_texto = procesar_con_ia(user_text, es_audio=False)
+    await responder_con_voz(update, respuesta_texto)
 
-# Manejador de notas de voz (Responde con NOTA DE VOZ)
+# Manejador si le envías NOTA DE VOZ -> Responde con NOTA DE VOZ
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Nota de voz recibida")
-    await update.message.chat.send_action("record_voice")
+    await update.message.chat.send_action("typing")
     
     voice = update.message.voice
     voice_file = await context.bot.get_file(voice.file_id)
     
     tmp_in_path = None
-    tmp_out_path = None
-    
     try:
-        # 1. Guardar voz entrante
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_in:
             tmp_in_path = tmp_in.name
             await voice_file.download_to_drive(tmp_in_path)
             
-        # 2. Procesar con Gemini
         respuesta_texto = procesar_con_ia(tmp_in_path, es_audio=True)
-        if not respuesta_texto:
-            respuesta_texto = "No logré entender el audio con claridad. ¿Podrías repetirlo?"
-
-        # 3. Convertir la respuesta de texto a audio con gTTS
-        tts = gTTS(text=respuesta_texto, lang='es')
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
-            tmp_out_path = tmp_out.name
-            tts.save(tmp_out_path)
-            
-        # 4. Enviar nota de voz a Telegram
-        with open(tmp_out_path, 'rb') as audio_response:
-            await update.message.reply_voice(voice=audio_response)
-            
-    except Exception as e:
-        logger.error(f"Error procesando la nota de voz: {e}")
-        await update.message.reply_text("Tuve un fallo técnico procesando la nota de voz. Inténtalo de nuevo.")
+        await responder_con_voz(update, respuesta_texto)
     finally:
-        # Limpieza de archivos temporales
         if tmp_in_path and os.path.exists(tmp_in_path):
             os.remove(tmp_in_path)
-        if tmp_out_path and os.path.exists(tmp_out_path):
-            os.remove(tmp_out_path)
 
 def main():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
@@ -135,3 +128,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+                
