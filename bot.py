@@ -78,4 +78,3 @@ if __name__ == '__main__':
         logging.info("Secretario con notas de voz optimizadas iniciado correctamente...")
         # run_polling maneja reconexiones automáticas ante pequeños cortes de red
         app.run_polling(drop_pending_updates=True)
-        
