@@ -7,18 +7,22 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filte
 from google import genai
 from google.genai import types
 
-# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Servidor Flask obligatorio para satisfacer el puerto web gratuito de Render
+# 1. Servidor Flask en segundo plano solo para mantener vivo el puerto de Render
 app = Flask(__name__)
 
 @app.route('/')
 def health_check():
-    return "Secretario IA & Bot de Telegram Activos 🚀", 200
+    return "Bot y Servidor Activos 🚀", 200
 
-# Inicializar cliente de Gemini
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
+    app.run(host="0.0.0.0", port=port, use_reloader=False)
+
+# 2. Cliente de IA
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def procesar_con_ia(texto: str) -> str:
@@ -52,7 +56,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     respuesta = procesar_con_ia(user_text)
     await update.message.reply_text(respuesta)
 
-def run_telegram_bot():
+def main():
+    # Iniciar Flask en un hilo secundario (esto es seguro para Flask)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    # Ejecutar Telegram en el HILO PRINCIPAL (evita el error de set_wakeup_fd)
     token = os.environ.get("TELEGRAM_TOKEN")
     if not token:
         logger.error("No se encontró TELEGRAM_TOKEN en las variables de entorno.")
@@ -61,15 +70,8 @@ def run_telegram_bot():
     application = ApplicationBuilder().token(token).build()
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     
-    logger.info("Iniciando bucle de Telegram...")
+    logger.info("Iniciando bot de Telegram en el hilo principal...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    # Ejecutar el bot de Telegram en segundo plano
-    t = threading.Thread(target=run_telegram_bot, daemon=True)
-    t.start()
-    
-    # Render asigna dinámicamente un puerto a través de la variable PORT
-    port = int(os.environ.get("PORT", 10000))
-    logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
-    app.run(host="0.0.0.0", port=port)
+    main()
