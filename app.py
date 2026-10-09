@@ -10,7 +10,7 @@ from google.genai import types
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 1. Servidor Flask en segundo plano solo para mantener vivo el puerto de Render
+# Servidor Flask en segundo plano para mantener vivo el puerto de Render
 app = Flask(__name__)
 
 @app.route('/')
@@ -22,7 +22,7 @@ def run_flask():
     logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
-# 2. Cliente de IA
+# Cliente de IA actualizado con el modelo correcto
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def procesar_con_ia(texto: str) -> str:
@@ -36,7 +36,7 @@ def procesar_con_ia(texto: str) -> str:
             tools=[types.Tool(google_search=types.GoogleSearch())]
         )
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=texto,
             config=config
         )
@@ -57,11 +57,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(respuesta)
 
 def main():
-    # Iniciar Flask en un hilo secundario (esto es seguro para Flask)
+    # Iniciar Flask en un hilo secundario
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # Ejecutar Telegram en el HILO PRINCIPAL (evita el error de set_wakeup_fd)
+    # Ejecutar Telegram en el hilo principal
     token = os.environ.get("TELEGRAM_TOKEN")
     if not token:
         logger.error("No se encontró TELEGRAM_TOKEN en las variables de entorno.")
@@ -75,3 +75,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+        
