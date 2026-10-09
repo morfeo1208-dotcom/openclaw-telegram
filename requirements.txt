@@ -3,3 +3,4 @@ python-telegram-bot
 google-genai
 gTTS
 requests
+fpdf2
