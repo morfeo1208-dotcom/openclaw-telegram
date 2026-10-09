@@ -11,7 +11,7 @@ from google.genai import types
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Servidor Flask en segundo plano para el puerto de Render
+# Servidor Flask en segundo plano solo para mantener activo el puerto de Render
 app = Flask(__name__)
 
 @app.route('/')
@@ -23,7 +23,7 @@ def run_flask():
     logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
-# Cliente de IA
+# Cliente de IA con Gemini
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def procesar_con_ia(contenido, es_audio=False) -> str:
@@ -38,16 +38,16 @@ def procesar_con_ia(contenido, es_audio=False) -> str:
         )
         
         if es_audio:
-            # Subir nota de voz a la API de Gemini
+            # Subir archivo de audio a la API de Gemini
             audio_file = client.files.upload(file=contenido)
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.8-flash',
                 contents=[audio_file, "Escucha este mensaje de voz y responde a lo que solicita el usuario."],
                 config=config
             )
         else:
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.8-flash',
                 contents=contenido,
                 config=config
             )
@@ -57,7 +57,7 @@ def procesar_con_ia(contenido, es_audio=False) -> str:
         logger.error(f"Error con la IA: {e}")
         return "Disculpa, tuve un fallo técnico consultando a la IA. Inténtalo de nuevo."
 
-# Manejador para textos
+# Manejador de texto
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
@@ -67,7 +67,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     respuesta = procesar_con_ia(user_text, es_audio=False)
     await update.message.reply_text(respuesta)
 
-# Manejador para notas de voz
+# Manejador de notas de voz
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Nota de voz recibida")
     await update.message.chat.send_action("typing")
@@ -75,7 +75,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     voice = update.message.voice
     voice_file = await context.bot.get_file(voice.file_id)
     
-    # Guardar audio temporalmente para enviarlo a Gemini
     with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_file:
         tmp_path = tmp_file.name
         await voice_file.download_to_drive(tmp_path)
@@ -100,7 +99,7 @@ def main():
     
     application = ApplicationBuilder().token(token).build()
     
-    # Registrar handlers para texto y voz
+    # Escuchar texto y notas de voz
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     
