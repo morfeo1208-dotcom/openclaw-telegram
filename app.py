@@ -17,7 +17,84 @@ app = Flask(__name__)
 
 @app.route('/')
 def health_check():
-    return "Bot y Servidor Activos 🚀", 200
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Vishnú - Servidor Tecnológico</title>
+        <style>
+            body {
+                background-color: #030712;
+                color: #f3f4f6;
+                font-family: 'Courier New', Courier, monospace;
+                text-align: center;
+                padding-top: 50px;
+                margin: 0;
+            }
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+            }
+            h1 {
+                color: #06b6d4;
+                font-size: 26px;
+                text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+                margin-bottom: 5px;
+            }
+            p {
+                color: #9ca3af;
+                font-size: 14px;
+                letter-spacing: 1px;
+            }
+            .tech-frame {
+                margin-top: 30px;
+                padding: 12px;
+                background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1));
+                border: 1px solid rgba(6, 182, 212, 0.3);
+                border-radius: 20px;
+                box-shadow: 0 0 30px rgba(6, 182, 212, 0.2);
+                display: inline-block;
+            }
+            img {
+                max-width: 100%;
+                width: 300px;
+                height: auto;
+                border-radius: 12px;
+                display: block;
+            }
+            .status-badge {
+                margin-top: 20px;
+                display: inline-block;
+                padding: 6px 14px;
+                background: rgba(16, 185, 129, 0.15);
+                border: 1px solid #10b981;
+                color: #34d399;
+                border-radius: 20px;
+                font-size: 12px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>SYS_VISHNU // ONLINE</h1>
+            <p>Núcleo de procesamiento divino y multiverso activo</p>
+            
+            <div class="tech-frame">
+                <!-- Imagen con estética cibernética/tecnológica -->
+                <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop" alt="Vishnu Cybernetic Core">
+            </div>
+            
+            <div>
+                <span class="status-badge">● CONEXIÓN NEURONAL ESTABLE</span>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_content, 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -248,4 +325,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-            
+                       
