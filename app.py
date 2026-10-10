@@ -7,8 +7,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError
 from gtts import gTTS
-from fpdf import FPDF
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,22 +26,20 @@ def run_flask():
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Diccionarios para almacenar el modo de respuesta y el historial de chat de cada usuario
 user_modes = {}
 user_chats = {}
 
 def obtener_o_crear_chat(user_id):
     if user_id not in user_chats:
         system_prompt = (
-            "Eres un secretario personal de IA avanzado y multiagente. "
-            "Responde de forma muy clara, concisa, directa y útil en español. "
-            "Si el usuario te pide traducir un documento, proporciona la traducción completa y limpia."
+            "Eres Vishnú, una entidad divina y digital que actúa como secretario personal de IA avanzado y multiagente. "
+            "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
+            "claridad y precisión absoluta en español."
         )
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
             tools=[types.Tool(google_search=types.GoogleSearch())]
         )
-        # Creamos una sesión de chat persistente por usuario
         user_chats[user_id] = client.chats.create(model='gemini-2.5-flash', config=config)
     return user_chats[user_id]
 
@@ -63,7 +61,7 @@ def procesar_con_ia(user_id, contenido, tipo="texto") -> str:
         elif tipo == "documento":
             doc_file, caption = contenido
             doc_file_ref = client.files.upload(file=doc_file)
-            prompt_text = caption if caption else "Traduce este documento al español de forma completa y profesional."
+            prompt_text = caption if caption else "Analiza este documento y responde a lo que se solicita en él."
             response = chat.send_message([doc_file_ref, prompt_text])
         elif tipo == "video":
             vid_file, caption = contenido
@@ -74,43 +72,19 @@ def procesar_con_ia(user_id, contenido, tipo="texto") -> str:
             response = chat.send_message(contenido)
             
         return response.text
-    except Exception as e:
+    except APIError as e:
+        if e.code == 429:
+            logger.error("Se ha alcanzado el límite de cuota de la API de Gemini.")
+            return "⚠️ Se ha agotado temporalmente la cuota gratuita de peticiones de la API de Gemini. Por favor, intenta más tarde."
         logger.error(f"Error con Gemini API: {e}")
         return "Disculpa, tuve un pequeño problema al procesar la solicitud."
+    except Exception as e:
+        logger.error(f"Error inesperado: {e}")
+        return "Disculpa, ocurrió un error inesperado al procesar tu solicitud."
 
-def crear_pdf_desde_texto(texto: str, output_path: str):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("helvetica", size=11)
-    safe_text = texto.encode('latin-1', 'replace').decode('latin-1')
-    pdf.multi_cell(0, 10, safe_text)
-    pdf.output(output_path)
-
-async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, es_documento_salida: bool = False):
+async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
     user_id = update.effective_user.id
     modo = user_modes.get(user_id, "voice")
-    
-    if es_documento_salida:
-        tmp_pdf_path = None
-        try:
-            await update.message.chat.send_action("upload_document")
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf:
-                tmp_pdf_path = tmp_pdf.name
-            
-            crear_pdf_desde_texto(texto_respuesta, tmp_pdf_path)
-            
-            with open(tmp_pdf_path, 'rb') as pdf_file:
-                await update.message.reply_document(
-                    document=pdf_file, 
-                    filename="documento_traducido.pdf",
-                    caption="📄 Aquí tienes tu documento traducido/procesado en PDF."
-                )
-                return
-        except Exception as e:
-            logger.error(f"Error generando PDF de salida: {e}")
-        finally:
-            if tmp_pdf_path and os.path.exists(tmp_pdf_path):
-                os.remove(tmp_pdf_path)
 
     if modo == "text":
         await update.message.reply_text(texto_respuesta)
@@ -149,7 +123,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == "mode_voice":
         user_modes[user_id] = "voice"
-        await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Notas de Voz** (excepto al traducir documentos, que te enviaré el PDF).")
+        await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Notas de Voz**.")
     elif query.data == "mode_text":
         user_modes[user_id] = "text"
         await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Texto**.")
@@ -163,7 +137,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
     
     respuesta_texto = procesar_con_ia(user_id, user_text, tipo="texto")
-    await responder_con_voz_o_texto(update, respuesta_texto, es_documento_salida=False)
+    await responder_con_voz_o_texto(update, respuesta_texto)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -180,7 +154,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await voice_file.download_to_drive(tmp_in_path)
             
         respuesta_texto = procesar_con_ia(user_id, tmp_in_path, tipo="audio")
-        await responder_con_voz_o_texto(update, respuesta_texto, es_documento_salida=False)
+        await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_in_path and os.path.exists(tmp_in_path):
             os.remove(tmp_in_path)
@@ -201,7 +175,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await photo_file.download_to_drive(tmp_img_path)
             
         respuesta_texto = procesar_con_ia(user_id, (tmp_img_path, caption), tipo="imagen")
-        await responder_con_voz_o_texto(update, respuesta_texto, es_documento_salida=False)
+        await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_img_path and os.path.exists(tmp_img_path):
             os.remove(tmp_img_path)
@@ -223,7 +197,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await doc_file.download_to_drive(tmp_doc_path)
             
         respuesta_texto = procesar_con_ia(user_id, (tmp_doc_path, caption), tipo="documento")
-        await responder_con_voz_o_texto(update, respuesta_texto, es_documento_salida=True)
+        await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_doc_path and os.path.exists(tmp_doc_path):
             os.remove(tmp_doc_path)
@@ -244,7 +218,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await video_file.download_to_drive(tmp_vid_path)
             
         respuesta_texto = procesar_con_ia(user_id, (tmp_vid_path, caption), tipo="video")
-        await responder_con_voz_o_texto(update, respuesta_texto, es_documento_salida=False)
+        await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_vid_path and os.path.exists(tmp_vid_path):
             os.remove(tmp_vid_path)
