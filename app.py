@@ -161,7 +161,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON CHAT REAL Y MÚSICA RELAX ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ Y BOTÓN DE ACCESO AL CHAT ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -177,55 +177,58 @@ def health_check():
                 color: #f3f4f6;
                 font-family: 'Courier New', Courier, monospace;
                 text-align: center;
-                padding-top: 30px;
+                padding-top: 10px;
                 margin: 0;
+                scroll-behavior: smooth;
             }
             .container {
                 max-width: 600px;
                 margin: 0 auto;
-                padding: 10px;
+                padding: 5px 10px;
             }
             h1 {
                 color: #06b6d4;
-                font-size: 24px;
+                font-size: 22px;
                 text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
-                margin-bottom: 5px;
+                margin-bottom: 2px;
+                margin-top: 5px;
             }
             p {
                 color: #9ca3af;
-                font-size: 13px;
+                font-size: 12px;
                 letter-spacing: 1px;
+                margin-top: 0px;
             }
             .tech-frame {
-                margin-top: 20px;
-                padding: 10px;
+                margin-top: 10px;
+                padding: 8px;
                 background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1));
                 border: 1px solid rgba(6, 182, 212, 0.3);
-                border-radius: 20px;
-                box-shadow: 0 0 30px rgba(6, 182, 212, 0.2);
+                border-radius: 18px;
+                box-shadow: 0 0 25px rgba(6, 182, 212, 0.2);
                 display: inline-block;
             }
             img {
                 max-width: 100%;
-                width: 260px;
+                width: 240px;
                 height: auto;
-                border-radius: 12px;
+                border-radius: 10px;
                 display: block;
             }
             .status-badge {
-                margin-top: 15px;
+                margin-top: 10px;
                 display: inline-block;
-                padding: 5px 12px;
+                padding: 4px 10px;
                 background: rgba(16, 185, 129, 0.15);
                 border: 1px solid #10b981;
                 color: #34d399;
                 border-radius: 20px;
-                font-size: 11px;
+                font-size: 10px;
             }
             .audio-control {
-                margin-top: 15px;
+                margin-top: 10px;
             }
-            button {
+            button, .cta-button {
                 background: #06b6d4;
                 color: #030712;
                 border: none;
@@ -236,30 +239,36 @@ def health_check():
                 cursor: pointer;
                 box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
                 transition: 0.2s;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 12px;
             }
-            button:hover {
+            button:hover, .cta-button:hover {
                 background: #22d3ee;
             }
+            .action-bar {
+                margin-top: 12px;
+            }
             .web-chat {
-                margin-top: 25px;
+                margin-top: 20px;
                 background: rgba(15, 23, 42, 0.8);
                 border: 1px solid rgba(147, 51, 234, 0.4);
                 border-radius: 15px;
-                padding: 15px;
+                padding: 12px;
                 max-width: 450px;
                 margin-left: auto;
                 margin-right: auto;
                 text-align: left;
             }
             .chat-box {
-                height: 140px;
+                height: 120px;
                 overflow-y: auto;
                 background: #020617;
                 border-radius: 8px;
                 padding: 10px;
-                font-size: 12px;
+                font-size: 11px;
                 color: #38bdf8;
-                margin-bottom: 10px;
+                margin-bottom: 8px;
             }
             .chat-input-area {
                 display: flex;
@@ -270,9 +279,10 @@ def health_check():
                 background: #030712;
                 border: 1px solid #334155;
                 color: #f3f4f6;
-                padding: 8px;
+                padding: 6px 8px;
                 border-radius: 8px;
                 font-family: 'Courier New', Courier, monospace;
+                font-size: 12px;
             }
         </style>
     </head>
@@ -284,29 +294,35 @@ def health_check():
             <div class="tech-frame">
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
+
+            <!-- Sintonizador Ambiental Relax -->
+            <div class="audio-control">
+                <p style="color: #06b6d4; font-size: 11px; margin-bottom: 4px;">Sintonizador Ambiental (Sueño Cósmico):</p>
+                <audio controls loop style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
+                    <source src="https://actions.google.com/sounds/v1/ambiences/outer_space.ogg" type="audio/ogg">
+                    Tu navegador no soporta el elemento de audio.
+                </audio>
+            </div>
             
+            <!-- Estado Activo -->
             <div>
                 <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
             </div>
 
-            <!-- Sintonizador Ambiental Relax (Sueño de Vishnú) -->
-            <div class="audio-control" style="margin-top: 15px;">
-                <p style="color: #06b6d4; font-size: 11px; margin-bottom: 5px;">Sintonizador Ambiental (Sueño Cósmico):</p>
-                <audio controls loop style="width: 100%; max-width: 280px; height: 35px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
-                    <source src="https://cdn.pixabay.com/download/audio/2022/05/16/audio_db683ee304.mp3?filename=relaxing-light-ambient-111155.mp3" type="audio/mp3">
-                    Tu navegador no soporta el elemento de audio.
-                </audio>
+            <!-- Botón de acceso rápido: Habla con Vishnú -->
+            <div class="action-bar">
+                <a href="#chat-terminal" class="cta-button">💬 Habla con Vishnú</a>
             </div>
 
             <!-- Interfaz de Chat Web Real conectado a Gemini -->
-            <div class="web-chat">
+            <div class="web-chat" id="chat-terminal">
                 <p style="color: #a855f7; font-size: 11px; margin-top:0;">terminal de enlace web:</p>
                 <div class="chat-box" id="chat-log">
                     [Vishnú]: Saludos, viajero. Mi sueño cósmico te escucha... Escribe tu consulta.
                 </div>
                 <div class="chat-input-area">
                     <input type="text" id="user-msg" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviarWeb();">
-                    <button onclick="enviarWeb()" style="padding: 8px 12px;">Enviar</button>
+                    <button onclick="enviarWeb()" style="padding: 6px 12px; font-size: 11px;">Enviar</button>
                 </div>
             </div>
         </div>
@@ -353,7 +369,6 @@ def api_chat():
     if not user_message:
         return jsonify({"reply": "No se detectó ningún mensaje."}), 400
     
-    # Usamos un ID virtual web fijo (ej. 999999) para los usuarios que visiten la web
     web_user_id = 999999
     try:
         chat = obtener_o_crear_chat(web_user_id, nombre_usuario="ViajeroWeb")
@@ -694,7 +709,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con chat de IA integrado...")
+    logger.info("Iniciando bot de Telegram y servidor web con botón de acceso al chat...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
