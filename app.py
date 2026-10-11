@@ -3,7 +3,7 @@ import threading
 import logging
 import tempfile
 import sqlite3
-from flask import Flask
+from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
 from google import genai
@@ -135,7 +135,33 @@ def borrar_chat(user_id, chat_id):
     conn.close()
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ MEJORADA (SINTONIZADOR AMBIENTAL NATIVO) ---
+# --- CLIENTE DE GEMINI ---
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+user_chats_cache = {}
+
+def obtener_o_crear_chat(user_id, nombre_usuario=""):
+    prefs = obtener_preferencias(user_id, nombre_usuario)
+    chat_activo_id = prefs["chat_activo_id"]
+    
+    cache_key = (user_id, chat_activo_id)
+    if cache_key not in user_chats_cache:
+        notas_memoria = prefs["notas"]
+        system_prompt = (
+            "Eres Vishnú, una entidad divina y digital que actúa como secretario personal de IA avanzado y multiagente. "
+            "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
+            "claridad y precisión absoluta en español.\n\n"
+            f"MEMORIA DE PREFERENCIAS DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
+        )
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            tools=[types.Tool(google_search=types.GoogleSearch())]
+        )
+        user_chats_cache[cache_key] = client.chats.create(model='gemini-2.5-flash', config=config)
+        
+    return user_chats_cache[cache_key]
+
+
+# --- SERVIDOR WEB FLASK CON CHAT REAL Y MÚSICA RELAX ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -226,7 +252,7 @@ def health_check():
                 text-align: left;
             }
             .chat-box {
-                height: 120px;
+                height: 140px;
                 overflow-y: auto;
                 background: #020617;
                 border-radius: 8px;
@@ -260,23 +286,23 @@ def health_check():
             </div>
             
             <div>
-                <span class="status-badge">● CONEXIÓN NEURONAL ESTABLE</span>
+                <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
             </div>
 
-            <!-- Reproductor de Música Ambiental Nativo -->
+            <!-- Sintonizador Ambiental Relax (Sueño de Vishnú) -->
             <div class="audio-control" style="margin-top: 15px;">
-                <p style="color: #06b6d4; font-size: 11px; margin-bottom: 5px;">Sintonizador Ambiental:</p>
+                <p style="color: #06b6d4; font-size: 11px; margin-bottom: 5px;">Sintonizador Ambiental (Sueño Cósmico):</p>
                 <audio controls loop style="width: 100%; max-width: 280px; height: 35px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
-                    <source src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=deep-space-ambient-10629.mp3" type="audio/mp3">
+                    <source src="https://cdn.pixabay.com/download/audio/2022/05/16/audio_db683ee304.mp3?filename=relaxing-light-ambient-111155.mp3" type="audio/mp3">
                     Tu navegador no soporta el elemento de audio.
                 </audio>
             </div>
 
-            <!-- Interfaz de Chat Web -->
+            <!-- Interfaz de Chat Web Real conectado a Gemini -->
             <div class="web-chat">
                 <p style="color: #a855f7; font-size: 11px; margin-top:0;">terminal de enlace web:</p>
                 <div class="chat-box" id="chat-log">
-                    [Vishnú]: Saludos, viajero. El multiverso escucha tu consulta...
+                    [Vishnú]: Saludos, viajero. Mi sueño cósmico te escucha... Escribe tu consulta.
                 </div>
                 <div class="chat-input-area">
                     <input type="text" id="user-msg" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviarWeb();">
@@ -286,19 +312,33 @@ def health_check():
         </div>
 
         <script>
-            function enviarWeb() {
+            async function enviarWeb() {
                 const input = document.getElementById('user-msg');
                 const log = document.getElementById('chat-log');
-                if(!input.value.trim()) return;
+                const texto = input.value.trim();
+                if(!texto) return;
 
-                log.innerHTML += `<br><span style="color: #f3f4f6;">[Tú]: ${input.value}</span>`;
-                const msg = input.value;
+                log.innerHTML += `<br><span style="color: #f3f4f6;">[Tú]: ${texto}</span>`;
                 input.value = '';
+                log.scrollTop = log.scrollHeight;
 
-                setTimeout(() => {
-                    log.innerHTML += `<br>[Vishnú]: He procesado "${msg}" a través de la red cósmica.`;
-                    log.scrollTop = log.scrollHeight;
-                }, 800);
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: texto })
+                    });
+                    const data = await response.json();
+                    
+                    if (data.reply) {
+                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply}</span>`;
+                    } else {
+                        log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Ocurrió un error en el multiverso.</span>`;
+                    }
+                } catch (err) {
+                    log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Error de conexión neuronal.</span>`;
+                }
+                log.scrollTop = log.scrollHeight;
             }
         </script>
     </body>
@@ -306,38 +346,30 @@ def health_check():
     """
     return html_content, 200
 
+@app.route('/api/chat', methods=['POST'])
+def api_chat():
+    data = request.get_json()
+    user_message = data.get("message", "")
+    if not user_message:
+        return jsonify({"reply": "No se detectó ningún mensaje."}), 400
+    
+    # Usamos un ID virtual web fijo (ej. 999999) para los usuarios que visiten la web
+    web_user_id = 999999
+    try:
+        chat = obtener_o_crear_chat(web_user_id, nombre_usuario="ViajeroWeb")
+        response = chat.send_message(user_message)
+        return jsonify({"reply": response.text})
+    except Exception as e:
+        logger.error(f"Error en chat web API: {e}")
+        return jsonify({"reply": "Disculpa, el sueño cósmico tuvo una pequeña interrupción."}), 500
+
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
     app.run(host="0.0.0.0", port=port, use_reloader=False, threaded=True)
 
 
-# --- IA GEMINI Y MANEJO DE CHATS MULTIPLES ---
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-
-user_chats_cache = {}
-
-def obtener_o_crear_chat(user_id, nombre_usuario=""):
-    prefs = obtener_preferencias(user_id, nombre_usuario)
-    chat_activo_id = prefs["chat_activo_id"]
-    
-    cache_key = (user_id, chat_activo_id)
-    if cache_key not in user_chats_cache:
-        notas_memoria = prefs["notas"]
-        system_prompt = (
-            "Eres Vishnú, una entidad divina y digital que actúa como secretario personal de IA avanzado y multiagente. "
-            "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
-            "claridad y precisión absoluta en español.\n\n"
-            f"MEMORIA DE PREFERENCIAS DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
-        )
-        config = types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            tools=[types.Tool(google_search=types.GoogleSearch())]
-        )
-        user_chats_cache[cache_key] = client.chats.create(model='gemini-2.5-flash', config=config)
-        
-    return user_chats_cache[cache_key]
-
+# --- IA GEMINI Y MANEJO DE CHATS TELEGRAM ---
 def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="") -> str:
     try:
         chat = obtener_o_crear_chat(user_id, nombre_usuario)
@@ -403,7 +435,7 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
                 os.remove(tmp_out_path)
 
 
-# --- MANEJADORES DE COMANDOS ---
+# --- MANEJADORES DE COMANDOS TELEGRAM ---
 async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -531,7 +563,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✅ Preferencia guardada: **Texto**.")
 
 
-# --- MANEJADORES DE MENSAJES MULTIMEDIA ---
+# --- MANEJADORES DE MENSAJES MULTIMEDIA TELEGRAM ---
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
@@ -662,7 +694,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram con múltiples chats y servidor optimizado...")
+    logger.info("Iniciando bot de Telegram y servidor web con chat de IA integrado...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
