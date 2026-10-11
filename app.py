@@ -161,7 +161,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA Y AUDIO DE LLUVIA SUAVE ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -300,11 +300,11 @@ def health_check():
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
 
-            <!-- Sintonizador Ambiental con audio ultraestable -->
+            <!-- Sintonizador Ambiental con lluvia suave -->
             <div class="audio-control">
                 <p style="color: #06b6d4; font-size: 11px; margin-bottom: 4px;">Sintonizador Ambiental (Sueño Cósmico):</p>
-                <audio controls loop preload="metadata" style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
-                    <source src="https://upload.wikimedia.org/wikipedia/commons/b/b2/Ambient_space_music.ogg" type="audio/ogg">
+                <audio controls loop preload="auto" style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
+                    <source src="https://actions.google.com/sounds/v1/weather/rain_water_dripping_softly.ogg?hl=es-419" type="audio/ogg">
                     Tu navegador no soporta el elemento de audio.
                 </audio>
             </div>
@@ -721,7 +721,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con santuario divino...")
+    logger.info("Iniciando bot de Telegram y servidor web con lluvia suave integrada...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
