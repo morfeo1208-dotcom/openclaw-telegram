@@ -161,7 +161,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA Y AUDIO DE LLUVIA SUAVE ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA Y VOZ DUAL ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -314,7 +314,7 @@ def health_check():
                 <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
             </div>
 
-            <!-- Interfaz de Chat Web con Título Divino y Voz Sintetizada -->
+            <!-- Interfaz de Chat Web con Título Divino y Voz Dual -->
             <div class="web-chat" id="chat-terminal">
                 <p style="color: #a855f7; font-size: 11px; margin-top:0;">Santuario de Vishnú // Canal Divino:</p>
                 <div class="chat-box" id="chat-log">
@@ -358,7 +358,10 @@ def health_check():
                     const data = await response.json();
                     
                     if (data.reply) {
-                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply}</span>`;
+                        const textoLimpio = data.reply.replace(/"/g, '&quot;');
+                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply} <span onclick="hablarTexto('${textoLimpio}')" style="cursor:pointer; font-size:14px;" title="Escuchar voz">🔊</span></span>`;
+                        
+                        // Reproducción automática para navegadores web normales (Chrome/Safari)
                         hablarTexto(data.reply);
                     } else {
                         log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Ocurrió un error en el multiverso.</span>`;
@@ -721,7 +724,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con lluvia suave integrada...")
+    logger.info("Iniciando bot de Telegram y servidor web con voz dual inteligente...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
