@@ -135,7 +135,7 @@ def borrar_chat(user_id, chat_id):
     conn.close()
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ MEJORADA (MÚSICA Y CHAT WEB) ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ MEJORADA (SINTONIZADOR AMBIENTAL NATIVO) ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -263,12 +263,13 @@ def health_check():
                 <span class="status-badge">● CONEXIÓN NEURONAL ESTABLE</span>
             </div>
 
-            <!-- Reproductor de Música Ambiental -->
-            <div class="audio-control">
-                <audio id="ambient-audio" loop>
-                    <source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf756.mp3?filename=ambient-space-110292.mp3" type="audio/mp3">
+            <!-- Reproductor de Música Ambiental Nativo -->
+            <div class="audio-control" style="margin-top: 15px;">
+                <p style="color: #06b6d4; font-size: 11px; margin-bottom: 5px;">Sintonizador Ambiental:</p>
+                <audio controls loop style="width: 100%; max-width: 280px; height: 35px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
+                    <source src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=deep-space-ambient-10629.mp3" type="audio/mp3">
+                    Tu navegador no soporta el elemento de audio.
                 </audio>
-                <button onclick="toggleMusic()">🎵 Reproducir Música Cósmica</button>
             </div>
 
             <!-- Interfaz de Chat Web -->
@@ -285,19 +286,6 @@ def health_check():
         </div>
 
         <script>
-            const audio = document.getElementById('ambient-audio');
-            let isPlaying = false;
-            function toggleMusic() {
-                if (isPlaying) {
-                    audio.pause();
-                    event.target.innerText = "🎵 Reproducir Música Cósmica";
-                } else {
-                    audio.play();
-                    event.target.innerText = "🔇 Silenciar Música";
-                }
-                isPlaying = !isPlaying;
-            }
-
             function enviarWeb() {
                 const input = document.getElementById('user-msg');
                 const log = document.getElementById('chat-log');
