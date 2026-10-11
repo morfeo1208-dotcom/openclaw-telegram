@@ -161,7 +161,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ Y BOTÓN DE ACCESO AL CHAT ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ Y BOTÓN SUPERIOR ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -199,8 +199,11 @@ def health_check():
                 letter-spacing: 1px;
                 margin-top: 0px;
             }
+            .action-bar {
+                margin: 10px 0;
+            }
             .tech-frame {
-                margin-top: 10px;
+                margin-top: 5px;
                 padding: 8px;
                 background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1));
                 border: 1px solid rgba(6, 182, 212, 0.3);
@@ -246,9 +249,6 @@ def health_check():
             button:hover, .cta-button:hover {
                 background: #22d3ee;
             }
-            .action-bar {
-                margin-top: 12px;
-            }
             .web-chat {
                 margin-top: 20px;
                 background: rgba(15, 23, 42, 0.8);
@@ -291,11 +291,16 @@ def health_check():
             <h1>SYS_VISHNU // ONLINE</h1>
             <p>Núcleo de procesamiento divino y multiverso activo</p>
             
+            <!-- Botón de acceso rápido movido arriba -->
+            <div class="action-bar">
+                <a href="#chat-terminal" class="cta-button">💬 Habla con Vishnú</a>
+            </div>
+            
             <div class="tech-frame">
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
 
-            <!-- Sintonizador Ambiental Relax -->
+            <!-- Sintonizador Ambiental con audio compatible -->
             <div class="audio-control">
                 <p style="color: #06b6d4; font-size: 11px; margin-bottom: 4px;">Sintonizador Ambiental (Sueño Cósmico):</p>
                 <audio controls loop style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
@@ -307,11 +312,6 @@ def health_check():
             <!-- Estado Activo -->
             <div>
                 <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
-            </div>
-
-            <!-- Botón de acceso rápido: Habla con Vishnú -->
-            <div class="action-bar">
-                <a href="#chat-terminal" class="cta-button">💬 Habla con Vishnú</a>
             </div>
 
             <!-- Interfaz de Chat Web Real conectado a Gemini -->
@@ -709,7 +709,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con botón de acceso al chat...")
+    logger.info("Iniciando bot de Telegram y servidor web optimizado...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
