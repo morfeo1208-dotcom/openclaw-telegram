@@ -33,11 +33,10 @@ def init_db():
             personalidad TEXT DEFAULT 'cosmico'
         )
     ''')
-    # Añadir columna personalidad si no existe en bases de datos anteriores
     try:
         cursor.execute("ALTER TABLE usuarios ADD COLUMN personalidad TEXT DEFAULT 'cosmico'")
     except sqlite3.OperationalError:
-        pass # La columna ya existe
+        pass
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chats (
@@ -158,7 +157,6 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     chat_activo_id = prefs["chat_activo_id"]
     personalidad = prefs["personalidad"]
     
-    # Clave de caché incluye la personalidad para reiniciar el prompt si cambia de avatar
     cache_key = (user_id, chat_activo_id, personalidad)
     if cache_key not in user_chats_cache:
         notas_memoria = prefs["notas"]
@@ -791,4 +789,5 @@ def main():
     logger.info("Iniciando bot de Telegram y servidor web con sistema de avatares duales...")
     application.run_polling(drop_pending_updates=True)
 
-if __name__ == "main इरा"?>
+if __name__ == "__main__":
+    main()
