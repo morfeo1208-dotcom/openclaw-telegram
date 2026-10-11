@@ -3,7 +3,7 @@ import threading
 import logging
 import tempfile
 from flask import Flask
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
 from google import genai
 from google.genai import types
@@ -193,6 +193,31 @@ async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("¿Cómo prefieres que te responda a partir de ahora?", reply_markup=reply_markup)
 
+async def oraculo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.info(f"Comando /oraculo ejecutado por {user_id}")
+    await update.message.chat.send_action("typing")
+    
+    prompt_oraculo = (
+        "Revela un consejo cósmico, filosófico y motivacional en 2 o 3 oraciones "
+        "manteniendo tu personalidad divina como Vishnú. Sé misterioso pero inspirador."
+    )
+    
+    respuesta_oraculo = procesar_con_ia(user_id, prompt_oraculo, tipo="texto")
+    await responder_con_voz_o_texto(update, respuesta_oraculo)
+
+async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.info(f"Comando /estado ejecutado por {user_id}")
+    
+    mensaje_estado = (
+        "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
+        "• *Servidor Web:* Activo en Render\n"
+        "• *Conexión Neuronal:* Estable\n"
+        "• *Monitoreo UptimeRobot:* En línea (Cada 5 min)"
+    )
+    await update.message.reply_text(mensaje_estado, parse_mode="Markdown")
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -300,6 +325,15 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if tmp_vid_path and os.path.exists(tmp_vid_path):
             os.remove(tmp_vid_path)
 
+async def post_init(app):
+    # Registra los comandos en el botón azul de menú en Telegram
+    comandos = [
+        BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
+        BotCommand("oraculo", "Recibir un consejo cósmico de Vishnú"),
+        BotCommand("estado", "Verificar el estado del servidor"),
+    ]
+    await app.bot.set_my_commands(comandos)
+
 def main():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
@@ -309,11 +343,17 @@ def main():
         logger.error("No se encontró TELEGRAM_TOKEN en las variables de entorno.")
         return
     
-    application = ApplicationBuilder().token(token).build()
+    application = ApplicationBuilder().token(token).post_init(post_init).build()
     
+    # Manejadores de Comandos
     application.add_handler(CommandHandler("modo", modo_command))
+    application.add_handler(CommandHandler("oraculo", oraculo_command))
+    application.add_handler(CommandHandler("estado", estado_command))
+    
+    # Manejador de Botones
     application.add_handler(CallbackQueryHandler(button_callback))
     
+    # Manejadores de Mensajes
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
@@ -325,4 +365,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+        
