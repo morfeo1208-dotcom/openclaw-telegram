@@ -495,4 +495,187 @@ async def chats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto += "\n*Comandos útiles:*\n• `/nuevo <nombre>` (Crear chat)\n• `/cambiar <id>` (Cambiar chat)\n• `/borrar <id>` (Eliminar chat)"
     await update.message.reply_text(texto, parse_mode="Markdown")
 
-async def nuevo
+async def nuevo_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    titulo = " ".join(context.args) if context.args else "Nuevo Ciclo"
+    chat_id = crear_nuevo_chat(user_id, titulo)
+    await update.message.reply_text(f"✨ **Chat Creado y Activado (ID: {chat_id}):** *'{titulo}'*.", parse_mode="Markdown")
+
+async def cambiar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.args:
+        await update.message.reply_text("🔄 Uso: `/cambiar <id_del_chat>`\nConsulta tus chats con `/chats`.")
+        return
+    try:
+        chat_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ El ID debe ser un número.")
+        return
+        
+    if cambiar_chat_activo(user_id, chat_id):
+        await update.message.reply_text(f"✅ Has cambiado al chat con ID `{chat_id}`.", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ No se encontró un chat con ese ID.")
+
+async def borrar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.args:
+        await update.message.reply_text("🗑️ Uso: `/borrar <id_del_chat>`")
+        return
+    try:
+        chat_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ El ID debe ser un número.")
+        return
+        
+    borrar_chat(user_id, chat_id)
+    await update.message.reply_text(f"🗑️ El chat con ID `{chat_id}` ha sido eliminado.", parse_mode="Markdown")
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if query.data == "mode_voice":
+        actualizar_modo_usuario(user_id, "voice")
+        await query.edit_message_text("✅ Preferencia guardada: **Notas de Voz**.")
+    elif query.data == "mode_text":
+        actualizar_modo_usuario(user_id, "text")
+        await query.edit_message_text("✅ Preferencia guardada: **Texto**.")
+
+
+# --- MANEJADORES DE MENSAJES MULTIMEDIA ---
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    if not user_text:
+        return
+    user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
+    await update.message.chat.send_action("typing")
+    respuesta = procesar_con_ia(user_id, user_text, tipo="texto", nombre_usuario=nombre)
+    await responder_con_voz_o_texto(update, respuesta)
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
+    await update.message.chat.send_action("typing")
+    voice = update.message.voice
+    voice_file = await context.bot.get_file(voice.file_id)
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            tmp_path = tmp.name
+            await voice_file.download_to_drive(tmp_path)
+        respuesta = procesar_con_ia(user_id, tmp_path, tipo="audio", nombre_usuario=nombre)
+        await responder_con_voz_o_texto(update, respuesta)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
+    await update.message.chat.send_action("typing")
+    photo = update.message.photo[-1]
+    photo_file = await context.bot.get_file(photo.file_id)
+    caption = update.message.caption or ""
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = tmp.name
+            await photo_file.download_to_drive(tmp_path)
+        respuesta = procesar_con_ia(user_id, (tmp_path, caption), tipo="imagen", nombre_usuario=nombre)
+        await responder_con_voz_o_texto(update, respuesta)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
+    await update.message.chat.send_action("typing")
+    doc = update.message.document
+    doc_file = await context.bot.get_file(doc.file_id)
+    caption = update.message.caption or ""
+    ext = os.path.splitext(doc.file_name)[1] if doc.file_name else ".pdf"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp_path = tmp.name
+            await doc_file.download_to_drive(tmp_path)
+        respuesta = procesar_con_ia(user_id, (tmp_path, caption), tipo="documento", nombre_usuario=nombre)
+        await responder_con_voz_o_texto(update, respuesta)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
+    await update.message.chat.send_action("typing")
+    video = update.message.video
+    video_file = await context.bot.get_file(video.file_id)
+    caption = update.message.caption or ""
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp_path = tmp.name
+            await video_file.download_to_drive(tmp_path)
+        respuesta = procesar_con_ia(user_id, (tmp_path, caption), tipo="video", nombre_usuario=nombre)
+        await responder_con_voz_o_texto(update, respuesta)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+# --- CONFIGURACIÓN DE COMANDOS EN MENÚ Y ARRANQUE ---
+async def post_init(app):
+    comandos = [
+        BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
+        BotCommand("oraculo", "Recibir un consejo cósmico"),
+        BotCommand("chats", "Ver lista de hilos de chat"),
+        BotCommand("nuevo", "Crear un nuevo hilo de chat"),
+        BotCommand("cambiar", "Cambiar al chat activo por ID"),
+        BotCommand("borrar", "Eliminar un hilo de chat"),
+        BotCommand("traductor", "Traducir texto con idioma personalizado"),
+        BotCommand("recordar", "Guardar memoria persistente"),
+        BotCommand("estado", "Ver estado del servidor"),
+    ]
+    await app.bot.set_my_commands(comandos)
+
+def main():
+    init_db()
+    
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    token = os.environ.get("TELEGRAM_TOKEN")
+    if not token:
+        logger.error("No se encontró TELEGRAM_TOKEN en las variables de entorno.")
+        return
+    
+    application = ApplicationBuilder().token(token).post_init(post_init).build()
+    
+    # Handlers de Comandos
+    application.add_handler(CommandHandler("modo", modo_command))
+    application.add_handler(CommandHandler("oraculo", oraculo_command))
+    application.add_handler(CommandHandler("chats", chats_command))
+    application.add_handler(CommandHandler("nuevo", nuevo_chat_command))
+    application.add_handler(CommandHandler("cambiar", cambiar_chat_command))
+    application.add_handler(CommandHandler("borrar", borrar_chat_command))
+    application.add_handler(CommandHandler("traductor", traductor_command))
+    application.add_handler(CommandHandler("estado", estado_command))
+    application.add_handler(CommandHandler("recordar", recordar_command))
+    
+    # Callbacks y Multimedia
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    
+    logger.info("Iniciando bot de Telegram con múltiples chats y servidor optimizado...")
+    application.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
