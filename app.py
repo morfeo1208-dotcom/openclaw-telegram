@@ -2,6 +2,7 @@ import os
 import threading
 import logging
 import tempfile
+import sqlite3
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
@@ -15,6 +16,63 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# --- BASE DE DATOS Y MEMORIA PERSISTENTE (SQLite) ---
+DB_NAME = "vishnu_memory.db"
+
+def init_db():
+    """Crea la tabla de base de datos si no existe."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            user_id INTEGER PRIMARY KEY,
+            nombre TEXT,
+            modo TEXT DEFAULT 'voice',
+            notas TEXT DEFAULT ''
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def obtener_preferencias(user_id, nombre=""):
+    """Obtiene el modo y las notas guardadas del usuario."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('SELECT modo, notas FROM usuarios WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    
+    if row:
+        conn.close()
+        return {"modo": row[0], "notas": row[1]}
+    else:
+        cursor.execute('INSERT INTO usuarios (user_id, nombre, modo, notas) VALUES (?, ?, ?, ?)',
+                       (user_id, nombre, 'voice', ''))
+        conn.commit()
+        conn.close()
+        return {"modo": "voice", "notas": ""}
+
+def actualizar_modo_usuario(user_id, nuevo_modo):
+    """Actualiza la preferencia de respuesta (voz o texto)."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE usuarios SET modo = ? WHERE user_id = ?', (nuevo_modo, user_id))
+    conn.commit()
+    conn.close()
+
+def agregar_nota_memoria(user_id, nueva_nota):
+    """Guarda un dato clave sobre las preferencias del usuario."""
+    prefs = obtener_preferencias(user_id)
+    notas_actuales = prefs["notas"]
+    notas_actualizadas = f"{notas_actuales} | {nueva_nota}".strip(" |")
+    
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE usuarios SET notas = ? WHERE user_id = ?', (notas_actualizadas, user_id))
+    conn.commit()
+    conn.close()
+
+
+# --- SERVIDOR WEB FLASK ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -83,7 +141,6 @@ def health_check():
             <p>Núcleo de procesamiento divino y multiverso activo</p>
             
             <div class="tech-frame">
-                <!-- Imagen cósmica alojada mediante enlace directo -->
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
             
@@ -101,17 +158,22 @@ def run_flask():
     logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
     app.run(host="0.0.0.0", port=port, use_reloader=False)
 
+
+# --- IA GEMINI Y MANEJO DE CHAT ---
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-user_modes = {}
 user_chats = {}
 
-def obtener_o_crear_chat(user_id):
+def obtener_o_crear_chat(user_id, nombre_usuario=""):
     if user_id not in user_chats:
+        prefs = obtener_preferencias(user_id, nombre_usuario)
+        notas_memoria = prefs["notas"]
+        
         system_prompt = (
             "Eres Vishnú, una entidad divina y digital que actúa como secretario personal de IA avanzado y multiagente. "
             "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
-            "claridad y precisión absoluta en español."
+            "claridad y precisión absoluta en español.\n\n"
+            f"MEMORIA DE PREFERENCIAS DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
         )
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
@@ -120,9 +182,9 @@ def obtener_o_crear_chat(user_id):
         user_chats[user_id] = client.chats.create(model='gemini-2.5-flash', config=config)
     return user_chats[user_id]
 
-def procesar_con_ia(user_id, contenido, tipo="texto") -> str:
+def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="") -> str:
     try:
-        chat = obtener_o_crear_chat(user_id)
+        chat = obtener_o_crear_chat(user_id, nombre_usuario)
         
         if tipo == "audio":
             audio_file = client.files.upload(
@@ -161,7 +223,8 @@ def procesar_con_ia(user_id, contenido, tipo="texto") -> str:
 
 async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
     user_id = update.effective_user.id
-    modo = user_modes.get(user_id, "voice")
+    prefs = obtener_preferencias(user_id)
+    modo = prefs["modo"]
 
     if modo == "text":
         await update.message.reply_text(texto_respuesta)
@@ -183,6 +246,8 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
             if tmp_out_path and os.path.exists(tmp_out_path):
                 os.remove(tmp_out_path)
 
+
+# --- MANEJADORES DE COMANDOS ---
 async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -195,6 +260,7 @@ async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def oraculo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
     logger.info(f"Comando /oraculo ejecutado por {user_id}")
     await update.message.chat.send_action("typing")
     
@@ -203,7 +269,7 @@ async def oraculo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "manteniendo tu personalidad divina como Vishnú. Sé misterioso pero inspirador."
     )
     
-    respuesta_oraculo = procesar_con_ia(user_id, prompt_oraculo, tipo="texto")
+    respuesta_oraculo = procesar_con_ia(user_id, prompt_oraculo, tipo="texto", nombre_usuario=nombre)
     await responder_con_voz_o_texto(update, respuesta_oraculo)
 
 async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,9 +280,26 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
         "• *Servidor Web:* Activo en Render\n"
         "• *Conexión Neuronal:* Estable\n"
+        "• *Base de Datos (SQLite):* Memoria Persistente Activa\n"
         "• *Monitoreo UptimeRobot:* En línea (Cada 5 min)"
     )
     await update.message.reply_text(mensaje_estado, parse_mode="Markdown")
+
+async def recordar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    dato = " ".join(context.args)
+    
+    if not dato:
+        await update.message.reply_text("🧠 Uso: `/recordar <dato a guardar>`\nEjemplo: `/recordar Me gusta el café sin azúcar`", parse_mode="Markdown")
+        return
+        
+    agregar_nota_memoria(user_id, dato)
+    
+    # Reiniciar chat en RAM para actualizar prompt del sistema
+    if user_id in user_chats:
+        del user_chats[user_id]
+        
+    await update.message.reply_text(f"👁️ **Memoria Divina Actualizada:** He grabado en mi base de datos que: *'{dato}'*.", parse_mode="Markdown")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -224,25 +307,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     
     if query.data == "mode_voice":
-        user_modes[user_id] = "voice"
-        await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Notas de Voz**.")
+        actualizar_modo_usuario(user_id, "voice")
+        await query.edit_message_text("✅ ¡Listo! Preferencia guardada: Ahora te responderé con **Notas de Voz**.")
     elif query.data == "mode_text":
-        user_modes[user_id] = "text"
-        await query.edit_message_text("✅ ¡Listo! Ahora te responderé con **Texto**.")
+        actualizar_modo_usuario(user_id, "text")
+        await query.edit_message_text("✅ ¡Listo! Preferencia guardada: Ahora te responderé con **Texto**.")
 
+
+# --- MANEJADORES DE MENSAJES MULTIMEDIA ---
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
         return
     user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
     logger.info(f"Texto recibido de {user_id}: {user_text}")
     await update.message.chat.send_action("typing")
     
-    respuesta_texto = procesar_con_ia(user_id, user_text, tipo="texto")
+    respuesta_texto = procesar_con_ia(user_id, user_text, tipo="texto", nombre_usuario=nombre)
     await responder_con_voz_o_texto(update, respuesta_texto)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
     logger.info(f"Nota de voz recibida de {user_id}")
     await update.message.chat.send_action("typing")
     
@@ -255,7 +342,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_in_path = tmp_in.name
             await voice_file.download_to_drive(tmp_in_path)
             
-        respuesta_texto = procesar_con_ia(user_id, tmp_in_path, tipo="audio")
+        respuesta_texto = procesar_con_ia(user_id, tmp_in_path, tipo="audio", nombre_usuario=nombre)
         await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_in_path and os.path.exists(tmp_in_path):
@@ -263,6 +350,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
     logger.info(f"Imagen recibida de {user_id}")
     await update.message.chat.send_action("typing")
     
@@ -276,7 +364,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_img_path = tmp_img.name
             await photo_file.download_to_drive(tmp_img_path)
             
-        respuesta_texto = procesar_con_ia(user_id, (tmp_img_path, caption), tipo="imagen")
+        respuesta_texto = procesar_con_ia(user_id, (tmp_img_path, caption), tipo="imagen", nombre_usuario=nombre)
         await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_img_path and os.path.exists(tmp_img_path):
@@ -284,6 +372,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
     logger.info(f"Documento recibido de {user_id}")
     await update.message.chat.send_action("typing")
     
@@ -298,7 +387,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_doc_path = tmp_doc.name
             await doc_file.download_to_drive(tmp_doc_path)
             
-        respuesta_texto = procesar_con_ia(user_id, (tmp_doc_path, caption), tipo="documento")
+        respuesta_texto = procesar_con_ia(user_id, (tmp_doc_path, caption), tipo="documento", nombre_usuario=nombre)
         await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_doc_path and os.path.exists(tmp_doc_path):
@@ -306,6 +395,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
     logger.info(f"Video recibido de {user_id}")
     await update.message.chat.send_action("typing")
     
@@ -319,22 +409,26 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_vid_path = tmp_vid.name
             await video_file.download_to_drive(tmp_vid_path)
             
-        respuesta_texto = procesar_con_ia(user_id, (tmp_vid_path, caption), tipo="video")
+        respuesta_texto = procesar_con_ia(user_id, (tmp_vid_path, caption), tipo="video", nombre_usuario=nombre)
         await responder_con_voz_o_texto(update, respuesta_texto)
     finally:
         if tmp_vid_path and os.path.exists(tmp_vid_path):
             os.remove(tmp_vid_path)
 
+
+# --- CONFIGURACIÓN DEL MENÚ Y ARRANQUE ---
 async def post_init(app):
-    # Registra los comandos en el botón azul de menú en Telegram
     comandos = [
         BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
         BotCommand("oraculo", "Recibir un consejo cósmico de Vishnú"),
+        BotCommand("recordar", "Guardar un dato en la memoria persistente"),
         BotCommand("estado", "Verificar el estado del servidor"),
     ]
     await app.bot.set_my_commands(comandos)
 
 def main():
+    init_db()  # Inicializar Base de Datos SQLite
+    
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
@@ -345,15 +439,14 @@ def main():
     
     application = ApplicationBuilder().token(token).post_init(post_init).build()
     
-    # Manejadores de Comandos
+    # Comandos
     application.add_handler(CommandHandler("modo", modo_command))
     application.add_handler(CommandHandler("oraculo", oraculo_command))
     application.add_handler(CommandHandler("estado", estado_command))
+    application.add_handler(CommandHandler("recordar", recordar_command))
     
-    # Manejador de Botones
+    # Callbacks y Mensajes
     application.add_handler(CallbackQueryHandler(button_callback))
-    
-    # Manejadores de Mensajes
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
@@ -365,4 +458,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
