@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS (SQLite) ---
+# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS (SQLite con timeout de concurrencia) ---
 DB_NAME = "vishnu_memory.db"
 
 def init_db():
     """Crea las tablas de base de datos para usuarios y múltiples chats."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -44,14 +44,13 @@ def init_db():
 
 def obtener_preferencias(user_id, nombre=""):
     """Obtiene el modo, notas y chat activo del usuario."""
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('SELECT modo, notas, chat_activo_id FROM usuarios WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     
     if row:
         modo, notas, chat_activo_id = row
-        # Si no tiene un chat activo asignado, le creamos uno por defecto
         if not chat_activo_id:
             cursor.execute('SELECT chat_id FROM chats WHERE user_id = ? ORDER BY chat_id ASC LIMIT 1', (user_id,))
             chat_row = cursor.fetchone()
@@ -65,7 +64,6 @@ def obtener_preferencias(user_id, nombre=""):
         conn.close()
         return {"modo": modo, "notas": notas, "chat_activo_id": chat_activo_id}
     else:
-        # Registrar usuario nuevo y crear su primer chat
         cursor.execute('INSERT INTO chats (user_id, titulo) VALUES (?, ?)', (user_id, "Chat Principal"))
         chat_id = cursor.lastrowid
         cursor.execute('INSERT INTO usuarios (user_id, nombre, modo, notas, chat_activo_id) VALUES (?, ?, ?, ?, ?)',
@@ -75,7 +73,7 @@ def obtener_preferencias(user_id, nombre=""):
         return {"modo": "voice", "notas": "", "chat_activo_id": chat_id}
 
 def actualizar_modo_usuario(user_id, nuevo_modo):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('UPDATE usuarios SET modo = ? WHERE user_id = ?', (nuevo_modo, user_id))
     conn.commit()
@@ -86,14 +84,14 @@ def agregar_nota_memoria(user_id, nueva_nota):
     notas_actuales = prefs["notas"]
     notas_actualizadas = f"{notas_actuales} | {nueva_nota}".strip(" |")
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('UPDATE usuarios SET notas = ? WHERE user_id = ?', (notas_actualizadas, user_id))
     conn.commit()
     conn.close()
 
 def crear_nuevo_chat(user_id, titulo="Chat Cósmico"):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('INSERT INTO chats (user_id, titulo) VALUES (?, ?)', (user_id, titulo))
     nuevo_chat_id = cursor.lastrowid
@@ -103,7 +101,7 @@ def crear_nuevo_chat(user_id, titulo="Chat Cósmico"):
     return nuevo_chat_id
 
 def obtener_chats_usuario(user_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('SELECT chat_id, titulo FROM chats WHERE user_id = ?', (user_id,))
     chats = cursor.fetchall()
@@ -111,7 +109,7 @@ def obtener_chats_usuario(user_id):
     return chats
 
 def cambiar_chat_activo(user_id, chat_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('SELECT chat_id FROM chats WHERE chat_id = ? AND user_id = ?', (chat_id, user_id))
     if cursor.fetchone():
@@ -123,10 +121,9 @@ def cambiar_chat_activo(user_id, chat_id):
     return False
 
 def borrar_chat(user_id, chat_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM chats WHERE chat_id = ? AND user_id = ?', (chat_id, user_id))
-    # Si borra el chat activo, reasignamos otro si existe
     cursor.execute('SELECT chat_activo_id FROM usuarios WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     if row and row[0] == chat_id:
@@ -138,7 +135,7 @@ def borrar_chat(user_id, chat_id):
     conn.close()
 
 
-# --- SERVIDOR WEB FLASK ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ MEJORADA (MÚSICA Y CHAT WEB) ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -154,28 +151,28 @@ def health_check():
                 color: #f3f4f6;
                 font-family: 'Courier New', Courier, monospace;
                 text-align: center;
-                padding-top: 50px;
+                padding-top: 30px;
                 margin: 0;
             }
             .container {
                 max-width: 600px;
                 margin: 0 auto;
-                padding: 20px;
+                padding: 10px;
             }
             h1 {
                 color: #06b6d4;
-                font-size: 26px;
+                font-size: 24px;
                 text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
                 margin-bottom: 5px;
             }
             p {
                 color: #9ca3af;
-                font-size: 14px;
+                font-size: 13px;
                 letter-spacing: 1px;
             }
             .tech-frame {
-                margin-top: 30px;
-                padding: 12px;
+                margin-top: 20px;
+                padding: 10px;
                 background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1));
                 border: 1px solid rgba(6, 182, 212, 0.3);
                 border-radius: 20px;
@@ -184,20 +181,72 @@ def health_check():
             }
             img {
                 max-width: 100%;
-                width: 300px;
+                width: 260px;
                 height: auto;
                 border-radius: 12px;
                 display: block;
             }
             .status-badge {
-                margin-top: 20px;
+                margin-top: 15px;
                 display: inline-block;
-                padding: 6px 14px;
+                padding: 5px 12px;
                 background: rgba(16, 185, 129, 0.15);
                 border: 1px solid #10b981;
                 color: #34d399;
                 border-radius: 20px;
+                font-size: 11px;
+            }
+            .audio-control {
+                margin-top: 15px;
+            }
+            button {
+                background: #06b6d4;
+                color: #030712;
+                border: none;
+                padding: 8px 16px;
+                font-family: 'Courier New', Courier, monospace;
+                font-weight: bold;
+                border-radius: 20px;
+                cursor: pointer;
+                box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+                transition: 0.2s;
+            }
+            button:hover {
+                background: #22d3ee;
+            }
+            .web-chat {
+                margin-top: 25px;
+                background: rgba(15, 23, 42, 0.8);
+                border: 1px solid rgba(147, 51, 234, 0.4);
+                border-radius: 15px;
+                padding: 15px;
+                max-width: 450px;
+                margin-left: auto;
+                margin-right: auto;
+                text-align: left;
+            }
+            .chat-box {
+                height: 120px;
+                overflow-y: auto;
+                background: #020617;
+                border-radius: 8px;
+                padding: 10px;
                 font-size: 12px;
+                color: #38bdf8;
+                margin-bottom: 10px;
+            }
+            .chat-input-area {
+                display: flex;
+                gap: 5px;
+            }
+            input[type="text"] {
+                flex: 1;
+                background: #030712;
+                border: 1px solid #334155;
+                color: #f3f4f6;
+                padding: 8px;
+                border-radius: 8px;
+                font-family: 'Courier New', Courier, monospace;
             }
         </style>
     </head>
@@ -213,7 +262,57 @@ def health_check():
             <div>
                 <span class="status-badge">● CONEXIÓN NEURONAL ESTABLE</span>
             </div>
+
+            <!-- Reproductor de Música Ambiental -->
+            <div class="audio-control">
+                <audio id="ambient-audio" loop>
+                    <source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf756.mp3?filename=ambient-space-110292.mp3" type="audio/mp3">
+                </audio>
+                <button onclick="toggleMusic()">🎵 Reproducir Música Cósmica</button>
+            </div>
+
+            <!-- Interfaz de Chat Web -->
+            <div class="web-chat">
+                <p style="color: #a855f7; font-size: 11px; margin-top:0;">terminal de enlace web:</p>
+                <div class="chat-box" id="chat-log">
+                    [Vishnú]: Saludos, viajero. El multiverso escucha tu consulta...
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="user-msg" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviarWeb();">
+                    <button onclick="enviarWeb()" style="padding: 8px 12px;">Enviar</button>
+                </div>
+            </div>
         </div>
+
+        <script>
+            const audio = document.getElementById('ambient-audio');
+            let isPlaying = false;
+            function toggleMusic() {
+                if (isPlaying) {
+                    audio.pause();
+                    event.target.innerText = "🎵 Reproducir Música Cósmica";
+                } else {
+                    audio.play();
+                    event.target.innerText = "🔇 Silenciar Música";
+                }
+                isPlaying = !isPlaying;
+            }
+
+            function enviarWeb() {
+                const input = document.getElementById('user-msg');
+                const log = document.getElementById('chat-log');
+                if(!input.value.trim()) return;
+
+                log.innerHTML += `<br><span style="color: #f3f4f6;">[Tú]: ${input.value}</span>`;
+                const msg = input.value;
+                input.value = '';
+
+                setTimeout(() => {
+                    log.innerHTML += `<br>[Vishnú]: He procesado "${msg}" a través de la red cósmica.`;
+                    log.scrollTop = log.scrollHeight;
+                }, 800);
+            }
+        </script>
     </body>
     </html>
     """
@@ -222,13 +321,12 @@ def health_check():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     logger.info(f"Iniciando servidor web Flask en el puerto {port}...")
-    app.run(host="0.0.0.0", port=port, use_reloader=False)
+    app.run(host="0.0.0.0", port=port, use_reloader=False, threaded=True)
 
 
 # --- IA GEMINI Y MANEJO DE CHATS MULTIPLES ---
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
-# Diccionario en RAM con clave (user_id, chat_id)
 user_chats_cache = {}
 
 def obtener_o_crear_chat(user_id, nombre_usuario=""):
@@ -359,7 +457,7 @@ async def recordar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🧠 Uso: `/recordar <dato a guardar>`", parse_mode="Markdown")
         return
     agregar_nota_memoria(user_id, dato)
-    user_chats_cache.clear()  # Limpiar caché para recargar notas en todos los chats
+    user_chats_cache.clear()
     await update.message.reply_text(f"👁️ **Memoria Divina Actualizada:** *'{dato}'*.", parse_mode="Markdown")
 
 async def traductor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -384,7 +482,6 @@ async def traductor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     respuesta = procesar_con_ia(user_id, prompt, tipo="texto", nombre_usuario=nombre)
     await responder_con_voz_o_texto(update, respuesta)
 
-# Comandos de Gestión de Múltiples Chats
 async def chats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     prefs = obtener_preferencias(user_id)
@@ -398,90 +495,4 @@ async def chats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto += "\n*Comandos útiles:*\n• `/nuevo <nombre>` (Crear chat)\n• `/cambiar <id>` (Cambiar chat)\n• `/borrar <id>` (Eliminar chat)"
     await update.message.reply_text(texto, parse_mode="Markdown")
 
-async def nuevo_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    titulo = " ".join(context.args) if context.args else "Nuevo Ciclo"
-    chat_id = crear_nuevo_chat(user_id, titulo)
-    await update.message.reply_text(f"✨ **Chat Creado y Activado (ID: {chat_id}):** *'{titulo}'*.", parse_mode="Markdown")
-
-async def cambiar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text("🔄 Uso: `/cambiar <id_del_chat>`\nConsulta tus chats con `/chats`.")
-        return
-    try:
-        chat_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("⚠️ El ID debe ser un número.")
-        return
-        
-    if cambiar_chat_activo(user_id, chat_id):
-        await update.message.reply_text(f"✅ Has cambiado al chat con ID `{chat_id}`.", parse_mode="Markdown")
-    else:
-        await update.message.reply_text("❌ No se encontró un chat con ese ID.")
-
-async def borrar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text("🗑️ Uso: `/borrar <id_del_chat>`")
-        return
-    try:
-        chat_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("⚠️ El ID debe ser un número.")
-        return
-        
-    borrar_chat(user_id, chat_id)
-    await update.message.reply_text(f"🗑️ El chat con ID `{chat_id}` ha sido eliminado.", parse_mode="Markdown")
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    if query.data == "mode_voice":
-        actualizar_modo_usuario(user_id, "voice")
-        await query.edit_message_text("✅ Preferencia guardada: **Notas de Voz**.")
-    elif query.data == "mode_text":
-        actualizar_modo_usuario(user_id, "text")
-        await query.edit_message_text("✅ Preferencia guardada: **Texto**.")
-
-
-# --- MANEJADORES DE MENSAJES MULTIMEDIA ---
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    if not user_text:
-        return
-    user_id = update.effective_user.id
-    nombre = update.effective_user.first_name
-    await update.message.chat.send_action("typing")
-    respuesta = procesar_con_ia(user_id, user_text, tipo="texto", nombre_usuario=nombre)
-    await responder_con_voz_o_texto(update, respuesta)
-
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    nombre = update.effective_user.first_name
-    await update.message.chat.send_action("typing")
-    voice = update.message.voice
-    voice_file = await context.bot.get_file(voice.file_id)
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
-            tmp_path = tmp.name
-            await voice_file.download_to_drive(tmp_path)
-        respuesta = procesar_con_ia(user_id, tmp_path, tipo="audio", nombre_usuario=nombre)
-        await responder_con_voz_o_texto(update, respuesta)
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    nombre = update.effective_user.first_name
-    await update.message.chat.send_action("typing")
-    photo = update.message.photo[-1]
-    photo_file = await context.bot.get_file(photo.file_id)
-    caption = update.message.caption or ""
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-          
+async def nuevo
