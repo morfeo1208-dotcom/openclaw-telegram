@@ -161,7 +161,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA Y VOZ DUAL ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA Y ENLACE REAL A TELEGRAM ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -201,6 +201,10 @@ def health_check():
             }
             .action-bar {
                 margin: 10px 0;
+                display: flex;
+                justify-content: center;
+                gap: 10px;
+                flex-wrap: wrap;
             }
             .tech-frame {
                 margin-top: 5px;
@@ -291,9 +295,10 @@ def health_check():
             <h1>SYS_VISHNU // ONLINE</h1>
             <p>Núcleo de procesamiento divino y multiverso activo</p>
             
-            <!-- Botón superior: Habla con Vishnú -->
+            <!-- Botones superiores: Web y Telegram oficial -->
             <div class="action-bar">
-                <a href="#chat-terminal" class="cta-button">💬 Habla con Vishnú</a>
+                <a href="#chat-terminal" class="cta-button">💬 Habla en la Web</a>
+                <a href="https://t.me/diosVishnu_Bot" target="_blank" class="cta-button" style="background: #38bdf8; color: #030712;">✈️ Chatear en Telegram</a>
             </div>
             
             <div class="tech-frame">
@@ -329,14 +334,26 @@ def health_check():
 
         <script>
             function hablarTexto(texto) {
-                if ('speechSynthesis' in window) {
+                if ('speechSynthesis' in window && window.speechSynthesis) {
                     window.speechSynthesis.cancel();
                     const utterance = new SpeechSynthesisUtterance(texto);
                     utterance.lang = 'es-ES';
                     utterance.rate = 1.0;
                     utterance.pitch = 0.9;
-                    window.speechSynthesis.speak(utterance);
+                    try {
+                        window.speechSynthesis.speak(utterance);
+                        return;
+                    } catch (e) {
+                        console.log("SpeechSynthesis bloqueado, usando respaldo de audio MP3.");
+                    }
                 }
+
+                const textoLimpio = encodeURIComponent(texto.substring(0, 200));
+                const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoLimpio}&tl=es&client=tw-ob`;
+                const audio = new Audio(audioUrl);
+                audio.play().catch(err => {
+                    console.log("El navegador requiere interacción del usuario en el icono 🔊.");
+                });
             }
 
             async function enviarWeb() {
@@ -358,10 +375,8 @@ def health_check():
                     const data = await response.json();
                     
                     if (data.reply) {
-                        const textoLimpio = data.reply.replace(/"/g, '&quot;');
-                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply} <span onclick="hablarTexto('${textoLimpio}')" style="cursor:pointer; font-size:14px;" title="Escuchar voz">🔊</span></span>`;
-                        
-                        // Reproducción automática para navegadores web normales (Chrome/Safari)
+                        const textoEscapado = data.reply.replace(/'/g, "\\\\\\'").replace(/"/g, '&quot;');
+                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply} <span onclick="hablarTexto('${textoEscapado}')" style="cursor:pointer; font-size:16px; margin-left: 5px;" title="Escuchar voz">🔊</span></span>`;
                         hablarTexto(data.reply);
                     } else {
                         log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Ocurrió un error en el multiverso.</span>`;
@@ -724,7 +739,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con voz dual inteligente...")
+    logger.info("Iniciando bot de Telegram y servidor web con enlace directo a Telegram...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
