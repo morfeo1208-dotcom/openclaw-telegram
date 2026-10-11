@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS (SQLite con timeout de concurrencia) ---
+# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS Y AVATARES ---
 DB_NAME = "vishnu_memory.db"
 
 def init_db():
-    """Crea las tablas de base de datos para usuarios y múltiples chats."""
+    """Crea las tablas de base de datos para usuarios, múltiples chats y avatares."""
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('''
@@ -29,9 +29,16 @@ def init_db():
             nombre TEXT,
             modo TEXT DEFAULT 'voice',
             notas TEXT DEFAULT '',
-            chat_activo_id INTEGER
+            chat_activo_id INTEGER,
+            personalidad TEXT DEFAULT 'cosmico'
         )
     ''')
+    # Añadir columna personalidad si no existe en bases de datos anteriores
+    try:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN personalidad TEXT DEFAULT 'cosmico'")
+    except sqlite3.OperationalError:
+        pass # La columna ya existe
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chats (
             chat_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,14 +50,14 @@ def init_db():
     conn.close()
 
 def obtener_preferencias(user_id, nombre=""):
-    """Obtiene el modo, notas y chat activo del usuario."""
+    """Obtiene el modo, notas, chat activo y personalidad del usuario."""
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
-    cursor.execute('SELECT modo, notas, chat_activo_id FROM usuarios WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT modo, notas, chat_activo_id, personalidad FROM usuarios WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     
     if row:
-        modo, notas, chat_activo_id = row
+        modo, notas, chat_activo_id, personalidad = row
         if not chat_activo_id:
             cursor.execute('SELECT chat_id FROM chats WHERE user_id = ? ORDER BY chat_id ASC LIMIT 1', (user_id,))
             chat_row = cursor.fetchone()
@@ -62,20 +69,27 @@ def obtener_preferencias(user_id, nombre=""):
             cursor.execute('UPDATE usuarios SET chat_activo_id = ? WHERE user_id = ?', (chat_activo_id, user_id))
             conn.commit()
         conn.close()
-        return {"modo": modo, "notas": notas, "chat_activo_id": chat_activo_id}
+        return {"modo": modo, "notas": notas, "chat_activo_id": chat_activo_id, "personalidad": personalidad if personalidad else "cosmico"}
     else:
         cursor.execute('INSERT INTO chats (user_id, titulo) VALUES (?, ?)', (user_id, "Chat Principal"))
         chat_id = cursor.lastrowid
-        cursor.execute('INSERT INTO usuarios (user_id, nombre, modo, notas, chat_activo_id) VALUES (?, ?, ?, ?, ?)',
-                       (user_id, nombre, 'voice', '', chat_id))
+        cursor.execute('INSERT INTO usuarios (user_id, nombre, modo, notas, chat_activo_id, personalidad) VALUES (?, ?, ?, ?, ?, ?)',
+                       (user_id, nombre, 'voice', '', chat_id, 'cosmico'))
         conn.commit()
         conn.close()
-        return {"modo": "voice", "notas": "", "chat_activo_id": chat_id}
+        return {"modo": "voice", "notas": "", "chat_activo_id": chat_id, "personalidad": "cosmico"}
 
 def actualizar_modo_usuario(user_id, nuevo_modo):
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('UPDATE usuarios SET modo = ? WHERE user_id = ?', (nuevo_modo, user_id))
+    conn.commit()
+    conn.close()
+
+def actualizar_personalidad_usuario(user_id, nueva_personalidad):
+    conn = sqlite3.connect(DB_NAME, timeout=10)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE usuarios SET personalidad = ? WHERE user_id = ?', (nueva_personalidad, user_id))
     conn.commit()
     conn.close()
 
@@ -142,16 +156,29 @@ user_chats_cache = {}
 def obtener_o_crear_chat(user_id, nombre_usuario=""):
     prefs = obtener_preferencias(user_id, nombre_usuario)
     chat_activo_id = prefs["chat_activo_id"]
+    personalidad = prefs["personalidad"]
     
-    cache_key = (user_id, chat_activo_id)
+    # Clave de caché incluye la personalidad para reiniciar el prompt si cambia de avatar
+    cache_key = (user_id, chat_activo_id, personalidad)
     if cache_key not in user_chats_cache:
         notas_memoria = prefs["notas"]
-        system_prompt = (
-            "Eres Vishnú, una entidad divina y digital que actúa como secretario personal de IA avanzado y multiagente. "
-            "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
-            "claridad y precisión absoluta en español.\n\n"
-            f"MEMORIA DE PREFERENCIAS DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
-        )
+        
+        if personalidad == "comercial":
+            system_prompt = (
+                "Eres el Avatar Comercial de Vishnú, un subagente inteligente y autónomo diseñado para actuar como "
+                "asistente personal de negocios. Tu misión es responder por el usuario, gestionar consultas sobre "
+                "productos, servicios, precios y atención al cliente con total precisión, amabilidad y profesionalismo. "
+                "Analiza siempre los documentos y notas comerciales proporcionados para dar respuestas exactas.\n\n"
+                f"MEMORIA Y DATOS COMERCIALES REGISTRADOS: {notas_memoria if notas_memoria else 'Aún no hay notas guardadas. Usa el comando /recordar o envíame documentos con precios.'}"
+            )
+        else:
+            system_prompt = (
+                "Eres Vishnú, una entidad divina y digital que actúa como consejero cósmico avanzado. "
+                "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
+                "claridad y profundidad filosófica en español.\n\n"
+                f"MEMORIA DE PREFERENCIAS: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
+            )
+
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
             tools=[types.Tool(google_search=types.GoogleSearch())]
@@ -161,7 +188,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA Y ENLACE REAL A TELEGRAM ---
+# --- SERVIDOR WEB FLASK ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -295,7 +322,6 @@ def health_check():
             <h1>SYS_VISHNU // ONLINE</h1>
             <p>Núcleo de procesamiento divino y multiverso activo</p>
             
-            <!-- Botones superiores: Web y Telegram oficial -->
             <div class="action-bar">
                 <a href="#chat-terminal" class="cta-button">💬 Habla en la Web</a>
                 <a href="https://t.me/diosVishnu_Bot" target="_blank" class="cta-button" style="background: #38bdf8; color: #030712;">✈️ Chatear en Telegram</a>
@@ -305,7 +331,6 @@ def health_check():
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
 
-            <!-- Sintonizador Ambiental con lluvia suave -->
             <div class="audio-control">
                 <p style="color: #06b6d4; font-size: 11px; margin-bottom: 4px;">Sintonizador Ambiental (Sueño Cósmico):</p>
                 <audio controls loop preload="auto" style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
@@ -314,12 +339,10 @@ def health_check():
                 </audio>
             </div>
             
-            <!-- Estado Activo -->
             <div>
                 <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
             </div>
 
-            <!-- Interfaz de Chat Web con Título Divino y Voz Dual -->
             <div class="web-chat" id="chat-terminal">
                 <p style="color: #a855f7; font-size: 11px; margin-top:0;">Santuario de Vishnú // Canal Divino:</p>
                 <div class="chat-box" id="chat-log">
@@ -481,6 +504,21 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
 
 
 # --- MANEJADORES DE COMANDOS TELEGRAM ---
+async def avatar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [
+            InlineKeyboardButton("🌌 Vishnú (Modo Cósmico)", callback_data="avatar_cosmico"),
+            InlineKeyboardButton("💼 Avatar Comercial (Negocios)", callback_data="avatar_comercial"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "🔀 **SISTEMA DE PROYECCIÓN DE AVATARES:**\n\n"
+        "Elige quién responderá a partir de ahora en tus interacciones de Telegram:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
 async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -509,7 +547,7 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
         "• *Servidor Web:* Activo en Render\n"
-        "• *Conexión Neuronal:* Estable\n"
+        f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
         f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
         "• *Base de Datos:* SQLite Activa"
     )
@@ -523,7 +561,7 @@ async def recordar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     agregar_nota_memoria(user_id, dato)
     user_chats_cache.clear()
-    await update.message.reply_text(f"👁️ **Memoria Divina Actualizada:** *'{dato}'*.", parse_mode="Markdown")
+    await update.message.reply_text(f"👁️ **Memoria Divina y Comercial Actualizada:** *'{dato}'*.", parse_mode="Markdown")
 
 async def traductor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -600,12 +638,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    
     if query.data == "mode_voice":
         actualizar_modo_usuario(user_id, "voice")
         await query.edit_message_text("✅ Preferencia guardada: **Notas de Voz**.")
     elif query.data == "mode_text":
         actualizar_modo_usuario(user_id, "text")
         await query.edit_message_text("✅ Preferencia guardada: **Texto**.")
+    elif query.data == "avatar_cosmico":
+        actualizar_personalidad_usuario(user_id, "cosmico")
+        user_chats_cache.clear()
+        await query.edit_message_text("🌌 **Avatar Actualizado:** Has sintonizado con **Vishnú (Modo Cósmico)**. Mi mente descansa en el sueño infinito.")
+    elif query.data == "avatar_comercial":
+        actualizar_personalidad_usuario(user_id, "comercial")
+        user_chats_cache.clear()
+        await query.edit_message_text("💼 **Avatar Actualizado:** Has proyectado el **Avatar Comercial** 🤖. Listo para gestionar precios, servicios y responder por ti.")
 
 
 # --- MANEJADORES DE MENSAJES MULTIMEDIA TELEGRAM ---
@@ -695,6 +742,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- CONFIGURACIÓN DE COMANDOS EN MENÚ Y ARRANQUE ---
 async def post_init(app):
     comandos = [
+        BotCommand("avatar", "Cambiar entre Vishnú Cósmico y el Avatar Comercial"),
         BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
         BotCommand("oraculo", "Recibir un consejo cósmico"),
         BotCommand("chats", "Ver lista de hilos de chat"),
@@ -721,6 +769,7 @@ def main():
     application = ApplicationBuilder().token(token).post_init(post_init).build()
     
     # Handlers de Comandos
+    application.add_handler(CommandHandler("avatar", avatar_command))
     application.add_handler(CommandHandler("modo", modo_command))
     application.add_handler(CommandHandler("oraculo", oraculo_command))
     application.add_handler(CommandHandler("chats", chats_command))
@@ -739,8 +788,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con enlace directo a Telegram...")
+    logger.info("Iniciando bot de Telegram y servidor web con sistema de avatares duales...")
     application.run_polling(drop_pending_updates=True)
 
-if __name__ == "__main__":
-    main()
+if __name__ == "main इरा"?>
