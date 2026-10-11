@@ -23,7 +23,7 @@ def health_check():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Vishnú - Servidor Tecnológico</title>
+        <title>Vishnú - Servidor Cósmico</title>
         <style>
             body {
                 background-color: #030712;
@@ -83,8 +83,8 @@ def health_check():
             <p>Núcleo de procesamiento divino y multiverso activo</p>
             
             <div class="tech-frame">
-                <!-- Imagen con estética cibernética/tecnológica -->
-                <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop" alt="Vishnu Cybernetic Core">
+                <!-- Imagen cósmica alojada mediante enlace directo -->
+                <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
             
             <div>
@@ -325,4 +325,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-                       
+    
