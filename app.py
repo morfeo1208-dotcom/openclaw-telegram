@@ -161,7 +161,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON INTERFAZ Y BOTÓN SUPERIOR ---
+# --- SERVIDOR WEB FLASK CON INTERFAZ MÍSTICA ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -291,7 +291,7 @@ def health_check():
             <h1>SYS_VISHNU // ONLINE</h1>
             <p>Núcleo de procesamiento divino y multiverso activo</p>
             
-            <!-- Botón de acceso rápido movido arriba -->
+            <!-- Botón superior: Habla con Vishnú -->
             <div class="action-bar">
                 <a href="#chat-terminal" class="cta-button">💬 Habla con Vishnú</a>
             </div>
@@ -300,11 +300,11 @@ def health_check():
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
             </div>
 
-            <!-- Sintonizador Ambiental con audio compatible -->
+            <!-- Sintonizador Ambiental con audio ultraestable -->
             <div class="audio-control">
                 <p style="color: #06b6d4; font-size: 11px; margin-bottom: 4px;">Sintonizador Ambiental (Sueño Cósmico):</p>
-                <audio controls loop style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
-                    <source src="https://actions.google.com/sounds/v1/ambiences/outer_space.ogg" type="audio/ogg">
+                <audio controls loop preload="metadata" style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
+                    <source src="https://upload.wikimedia.org/wikipedia/commons/b/b2/Ambient_space_music.ogg" type="audio/ogg">
                     Tu navegador no soporta el elemento de audio.
                 </audio>
             </div>
@@ -314,20 +314,31 @@ def health_check():
                 <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
             </div>
 
-            <!-- Interfaz de Chat Web Real conectado a Gemini -->
+            <!-- Interfaz de Chat Web con Título Divino y Voz Sintetizada -->
             <div class="web-chat" id="chat-terminal">
-                <p style="color: #a855f7; font-size: 11px; margin-top:0;">terminal de enlace web:</p>
+                <p style="color: #a855f7; font-size: 11px; margin-top:0;">Santuario de Vishnú // Canal Divino:</p>
                 <div class="chat-box" id="chat-log">
                     [Vishnú]: Saludos, viajero. Mi sueño cósmico te escucha... Escribe tu consulta.
                 </div>
                 <div class="chat-input-area">
-                    <input type="text" id="user-msg" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviarWeb();">
-                    <button onclick="enviarWeb()" style="padding: 6px 12px; font-size: 11px;">Enviar</button>
+                    <input type="text" id="user-msg" placeholder="Escribe un mensaje al dios..." onkeypress="if(event.key === 'Enter') enviarWeb();">
+                    <button onclick="enviarWeb()" style="padding: 6px 12px; font-size: 11px;">Ofrecer</button>
                 </div>
             </div>
         </div>
 
         <script>
+            function hablarTexto(texto) {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(texto);
+                    utterance.lang = 'es-ES';
+                    utterance.rate = 1.0;
+                    utterance.pitch = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+
             async function enviarWeb() {
                 const input = document.getElementById('user-msg');
                 const log = document.getElementById('chat-log');
@@ -348,6 +359,7 @@ def health_check():
                     
                     if (data.reply) {
                         log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply}</span>`;
+                        hablarTexto(data.reply);
                     } else {
                         log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Ocurrió un error en el multiverso.</span>`;
                     }
@@ -709,7 +721,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web optimizado...")
+    logger.info("Iniciando bot de Telegram y servidor web con santuario divino...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
