@@ -227,7 +227,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL ---
+# --- SERVIDOR WEB FLASK CON ORÁCULO, MÚSICA Y VOZ WEB ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -311,7 +311,7 @@ def health_check():
                 text-align: left;
             }
             .chat-box {
-                height: 100px;
+                height: 110px;
                 overflow-y: auto;
                 background: #020617;
                 border-radius: 8px;
@@ -360,7 +360,10 @@ def health_check():
 
             <!-- CHAT WEB -->
             <div class="web-chat">
-                <p style="color: #a855f7; font-size: 11px; margin-top:0;">Canal Divino con Vishnú:</p>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <p style="color: #a855f7; font-size: 11px; margin:0;">Canal Divino con Vishnú:</p>
+                    <button onclick="toggleVozWeb()" id="btn-voz" class="cta-button" style="padding: 2px 8px; font-size: 10px; background: #a855f7; color: #fff;">🔊 Voz: ON</button>
+                </div>
                 <div class="chat-box" id="chat-log">
                     [Vishnú]: Saludos, viajero. Escribe tu consulta al santuario...
                 </div>
@@ -372,6 +375,34 @@ def health_check():
         </div>
 
         <script>
+            let vozActiva = true;
+
+            function toggleVozWeb() {
+                vozActiva = !vozActiva;
+                const btn = document.getElementById('btn-voz');
+                if(vozActiva) {
+                    btn.style.background = "#a855f7";
+                    btn.innerText = "🔊 Voz: ON";
+                } else {
+                    btn.style.background = "#334155";
+                    btn.innerText = "🔇 Voz: OFF";
+                    window.speechSynthesis.cancel();
+                }
+            }
+
+            function hablar(texto) {
+                if (!vozActiva || !('speechSynthesis' in window)) return;
+                window.speechSynthesis.cancel(); // Detener audio anterior
+                
+                // Limpiar etiquetas HTML o markdown del texto antes de leer
+                const textoPlano = texto.replace(/<[^>]*>/g, '').replace(/[*_`]/g, '');
+                const utterance = new SpeechSynthesisUtterance(textoPlano);
+                utterance.lang = 'es-ES';
+                utterance.rate = 1.0;
+                utterance.pitch = 0.9; // Tono un poco más solemne / divino
+                window.speechSynthesis.speak(utterance);
+            }
+
             async function consultarOraculo() {
                 const caja = document.getElementById('oraculo-text');
                 caja.innerHTML = "✨ Conectando con el sueño cósmico de Vishnú y revelando profecía...";
@@ -380,6 +411,7 @@ def health_check():
                     const data = await response.json();
                     if(data.reply) {
                         caja.innerHTML = `🌟 <b>Profecía Estelar:</b> "${data.reply}"`;
+                        hablar(data.reply);
                     } else {
                         caja.innerHTML = "⚠️ El oráculo parpadeó en las estrellas. Intenta de nuevo.";
                     }
@@ -407,6 +439,7 @@ def health_check():
                     const data = await response.json();
                     if (data.reply) {
                         log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply}</span>`;
+                        hablar(data.reply);
                     } else {
                         log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Ocurrió un error en el multiverso.</span>`;
                     }
@@ -599,7 +632,7 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(user_id)
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
-        "• *Servidor Web:* Activo en Render (Con Oráculo y Música)\n"
+        "• *Servidor Web:* Activo en Render (Con Voz Web y Oráculo)\n"
         f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
         f"• *Nivel RPG:* `{prefs['rpg_nivel']}` ({prefs['rpg_xp']} XP)\n"
         f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
@@ -800,7 +833,7 @@ async def post_init(app):
         BotCommand("aventura", "Jugar al RPG El Sueño de Vishnú"),
         BotCommand("perfil", "Ver tu Nivel y XP en el RPG"),
         BotCommand("avatar", "Cambiar entre Vishnú Cósmico y Comercial"),
-        BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
+        BotCommand("modo", "Cambiar respuesta entre Voz ou Texto"),
         BotCommand("oraculo", "Recibir un consejo cósmico"),
         BotCommand("chats", "Ver lista de hilos de chat"),
         BotCommand("nuevo", "Crear un nuevo hilo de chat"),
@@ -847,7 +880,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando servidor web y bot de Telegram con todas las capacidades activas...")
+    logger.info("Iniciando servidor web y bot de Telegram con voz web activada...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
