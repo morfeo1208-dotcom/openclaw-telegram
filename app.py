@@ -227,7 +227,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL POTENCIADA ---
+# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL LIMPIA ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -255,7 +255,7 @@ def health_check():
             .cta-button { background: #06b6d4; color: #030712; border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 12px; transition: 0.2s; }
             .cta-button:hover { background: #22d3ee; }
             
-            /* REPRODUCTOR AMBIENTAL POTENCIADO */
+            /* REPRODUCTOR AMBIENTAL LIMPIO */
             .audio-box {
                 margin: 10px auto;
                 background: rgba(15, 23, 42, 0.8);
@@ -339,17 +339,13 @@ def health_check():
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico">
             </div>
 
-            <!-- REPRODUCTOR DE MÚSICA AMBIENTAL CON CONTROL DE VOLUMEN -->
+            <!-- REPRODUCTOR DE MÚSICA AMBIENTAL NATIVO Y LIMPIO -->
             <div class="audio-box">
-                <p style="color: #06b6d4; font-size: 10px; margin: 0 0 4px 0;">Sintonizador Ambiental (Lluvia Cósmica):</p>
-                <audio id="audio-lluvia" controls loop preload="auto" style="width: 100%; height: 28px; filter: invert(0.9) hue-rotate(180deg);">
+                <p style="color: #06b6d4; font-size: 10px; margin: 0 0 6px 0;">Sintonizador Ambiental (Lluvia Cósmica):</p>
+                <audio id="audio-lluvia" controls loop preload="auto" style="width: 100%; height: 32px; filter: invert(0.9) hue-rotate(180deg);">
                     <source src="https://actions.google.com/sounds/v1/weather/rain_water_dripping_softly.ogg?hl=es-419" type="audio/ogg">
                     Tu navegador no soporta audio.
                 </audio>
-                <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #9ca3af;">
-                    <span>Volumen ambiental:</span>
-                    <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="1.0" style="width: 160px; cursor: pointer;" oninput="cambiarVolumen(this.value)">
-                </div>
             </div>
 
             <!-- ORÁCULO ESTELAR / RULETA DE BENDICIONES -->
@@ -381,20 +377,13 @@ def health_check():
         <script>
             let vozActiva = true;
 
-            // Configurar volumen inicial al máximo al cargar la página
+            // Forzar volumen al máximo al cargar la página
             window.addEventListener('DOMContentLoaded', () => {
                 const player = document.getElementById('audio-lluvia');
                 if(player) {
                     player.volume = 1.0;
                 }
             });
-
-            function cambiarVolumen(val) {
-                const player = document.getElementById('audio-lluvia');
-                if(player) {
-                    player.volume = val;
-                }
-            }
 
             function toggleVozWeb() {
                 vozActiva = !vozActiva;
@@ -677,7 +666,7 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(user_id)
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
-        "• *Servidor Web:* Activo en Render (Con Volumen y Voz Web)\n"
+        "• *Servidor Web:* Activo en Render (Con Reproductor Limpio)\n"
         f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
         f"• *Nivel RPG:* `{prefs['rpg_nivel']}` ({prefs['rpg_xp']} XP)\n"
         f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
@@ -927,7 +916,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando servidor web y bot de Telegram con volumen ambiental ajustado...")
+    logger.info("Iniciando servidor web y bot con reproductor ambiental optimizado...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
