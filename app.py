@@ -227,7 +227,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON ORÁCULO, MÚSICA Y VOZ WEB ---
+# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL POTENCIADA ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -255,14 +255,14 @@ def health_check():
             .cta-button { background: #06b6d4; color: #030712; border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 12px; transition: 0.2s; }
             .cta-button:hover { background: #22d3ee; }
             
-            /* REPRODUCTOR AMBIENTAL */
+            /* REPRODUCTOR AMBIENTAL POTENCIADO */
             .audio-box {
                 margin: 10px auto;
                 background: rgba(15, 23, 42, 0.8);
                 border: 1px solid rgba(6, 182, 212, 0.3);
                 border-radius: 12px;
-                padding: 8px;
-                max-width: 280px;
+                padding: 10px;
+                max-width: 290px;
             }
 
             /* ORÁCULO ESTELAR / RULETA DE BENDICIONES */
@@ -339,13 +339,17 @@ def health_check():
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico">
             </div>
 
-            <!-- REPRODUCTOR DE MÚSICA AMBIENTAL -->
+            <!-- REPRODUCTOR DE MÚSICA AMBIENTAL CON CONTROL DE VOLUMEN -->
             <div class="audio-box">
-                <p style="color: #06b6d4; font-size: 10px; margin: 0 0 4px 0;">Sintonizador Ambiental (Sueño Cósmico):</p>
-                <audio controls loop preload="auto" style="width: 100%; height: 28px; filter: invert(0.9) hue-rotate(180deg);">
+                <p style="color: #06b6d4; font-size: 10px; margin: 0 0 4px 0;">Sintonizador Ambiental (Lluvia Cósmica):</p>
+                <audio id="audio-lluvia" controls loop preload="auto" style="width: 100%; height: 28px; filter: invert(0.9) hue-rotate(180deg);">
                     <source src="https://actions.google.com/sounds/v1/weather/rain_water_dripping_softly.ogg?hl=es-419" type="audio/ogg">
                     Tu navegador no soporta audio.
                 </audio>
+                <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #9ca3af;">
+                    <span>Volumen ambiental:</span>
+                    <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="1.0" style="width: 160px; cursor: pointer;" oninput="cambiarVolumen(this.value)">
+                </div>
             </div>
 
             <!-- ORÁCULO ESTELAR / RULETA DE BENDICIONES -->
@@ -377,6 +381,21 @@ def health_check():
         <script>
             let vozActiva = true;
 
+            // Configurar volumen inicial al máximo al cargar la página
+            window.addEventListener('DOMContentLoaded', () => {
+                const player = document.getElementById('audio-lluvia');
+                if(player) {
+                    player.volume = 1.0;
+                }
+            });
+
+            function cambiarVolumen(val) {
+                const player = document.getElementById('audio-lluvia');
+                if(player) {
+                    player.volume = val;
+                }
+            }
+
             function toggleVozWeb() {
                 vozActiva = !vozActiva;
                 const btn = document.getElementById('btn-voz');
@@ -392,14 +411,12 @@ def health_check():
 
             function hablar(texto) {
                 if (!vozActiva || !('speechSynthesis' in window)) return;
-                window.speechSynthesis.cancel(); // Detener audio anterior
-                
-                // Limpiar etiquetas HTML o markdown del texto antes de leer
+                window.speechSynthesis.cancel();
                 const textoPlano = texto.replace(/<[^>]*>/g, '').replace(/[*_`]/g, '');
                 const utterance = new SpeechSynthesisUtterance(textoPlano);
                 utterance.lang = 'es-ES';
                 utterance.rate = 1.0;
-                utterance.pitch = 0.9; // Tono un poco más solemne / divino
+                utterance.pitch = 0.9;
                 window.speechSynthesis.speak(utterance);
             }
 
@@ -528,13 +545,13 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
         logger.error(f"Error inesperado: {e}")
         return "Disculpa, ocurrió un error inesperado al procesar tu solicitud."
 
-async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
+async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, reply_markup=None):
     user_id = update.effective_user.id
     prefs = obtener_preferencias(user_id)
     modo = prefs["modo"]
 
     if modo == "text":
-        await update.message.reply_text(texto_respuesta)
+        await update.message.reply_text(texto_respuesta, reply_markup=reply_markup, parse_mode="Markdown")
     else:
         await update.message.chat.send_action("record_voice")
         tmp_out_path = None
@@ -545,10 +562,36 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
                 tts.save(tmp_out_path)
                 
             with open(tmp_out_path, 'rb') as audio_response:
-                await update.message.reply_voice(voice=audio_response)
+                await update.message.reply_voice(voice=audio_response, reply_markup=reply_markup)
         except Exception as e:
             logger.error(f"Error generando audio gTTS: {e}")
-            await update.message.reply_text(texto_respuesta)
+            await update.message.reply_text(texto_respuesta, reply_markup=reply_markup, parse_mode="Markdown")
+        finally:
+            if tmp_out_path and os.path.exists(tmp_out_path):
+                os.remove(tmp_out_path)
+
+async def responder_con_voz_o_texto_query(query, texto_respuesta: str, reply_markup=None):
+    user_id = query.from_user.id
+    prefs = obtener_preferencias(user_id)
+    modo = prefs["modo"]
+
+    if modo == "text":
+        await query.edit_message_text(texto_respuesta, reply_markup=reply_markup, parse_mode="Markdown")
+    else:
+        await query.message.chat.send_action("record_voice")
+        tmp_out_path = None
+        try:
+            tts = gTTS(text=texto_respuesta, lang='es')
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
+                tmp_out_path = tmp_out.name
+                tts.save(tmp_out_path)
+                
+            await query.edit_message_text("🌌 *Narración Cósmica en curso...*", parse_mode="Markdown")
+            with open(tmp_out_path, 'rb') as audio_response:
+                await query.message.reply_voice(voice=audio_response, reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Error generando audio gTTS en callback: {e}")
+            await query.edit_message_text(texto_respuesta, reply_markup=reply_markup, parse_mode="Markdown")
         finally:
             if tmp_out_path and os.path.exists(tmp_out_path):
                 os.remove(tmp_out_path)
@@ -579,7 +622,9 @@ async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     mensaje_subida = f"\n\n🎉 ¡Felicidades! Has alcanzado el **Nivel {nivel}** de Conciencia Cósmica." if subio else ""
-    await update.message.reply_text(f"🌌 **EL SUEÑO CÓSMICO DE VISHNÚ**\n\n{historia}{mensaje_subida}", reply_markup=reply_markup)
+    
+    texto_completo = f"🌌 **EL SUEÑO CÓSMICO DE VISHNÚ**\n\n{historia}{mensaje_subida}"
+    await responder_con_voz_o_texto(update, texto_completo, reply_markup=reply_markup)
 
 async def perfil_rpg_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -632,7 +677,7 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(user_id)
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
-        "• *Servidor Web:* Activo en Render (Con Voz Web y Oráculo)\n"
+        "• *Servidor Web:* Activo en Render (Con Volumen y Voz Web)\n"
         f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
         f"• *Nivel RPG:* `{prefs['rpg_nivel']}` ({prefs['rpg_xp']} XP)\n"
         f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
@@ -740,7 +785,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         mensaje_subida = f"\n\n🎉 **¡HAS SUBIDO AL NIVEL {nivel}!**" if subio else ""
-        await query.edit_message_text(f"🌌 {historia}{mensaje_subida}\n\n*(+25 XP ganado)*", reply_markup=reply_markup)
+        
+        texto_completo = f"🌌 {historia}{mensaje_subida}\n\n*(+25 XP ganado)*"
+        await responder_con_voz_o_texto_query(query, texto_completo, reply_markup=reply_markup)
 
 
 # --- MANEJADORES DE MENSAJES MULTIMEDIA TELEGRAM ---
@@ -833,7 +880,7 @@ async def post_init(app):
         BotCommand("aventura", "Jugar al RPG El Sueño de Vishnú"),
         BotCommand("perfil", "Ver tu Nivel y XP en el RPG"),
         BotCommand("avatar", "Cambiar entre Vishnú Cósmico y Comercial"),
-        BotCommand("modo", "Cambiar respuesta entre Voz ou Texto"),
+        BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
         BotCommand("oraculo", "Recibir un consejo cósmico"),
         BotCommand("chats", "Ver lista de hilos de chat"),
         BotCommand("nuevo", "Crear un nuevo hilo de chat"),
@@ -880,7 +927,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando servidor web y bot de Telegram con voz web activada...")
+    logger.info("Iniciando servidor web y bot de Telegram con volumen ambiental ajustado...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
