@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS Y AVATARES ---
+# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS, AVATARES Y RPG ---
 DB_NAME = "vishnu_memory.db"
 
 def init_db():
-    """Crea las tablas de base de datos para usuarios, múltiples chats y avatares."""
+    """Crea las tablas de base de datos para usuarios, múltiples chats, avatares y progreso de RPG."""
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('''
@@ -30,13 +30,22 @@ def init_db():
             modo TEXT DEFAULT 'voice',
             notas TEXT DEFAULT '',
             chat_activo_id INTEGER,
-            personalidad TEXT DEFAULT 'cosmico'
+            personalidad TEXT DEFAULT 'cosmico',
+            rpg_nivel INTEGER DEFAULT 1,
+            rpg_xp INTEGER DEFAULT 0,
+            rpg_inventario TEXT DEFAULT 'Amuleto Estelar'
         )
     ''')
-    try:
+    
+    columnas_existentes = [row[1] for row in cursor.execute("PRAGMA table_info(usuarios)").fetchall()]
+    if 'personalidad' not in columnas_existentes:
         cursor.execute("ALTER TABLE usuarios ADD COLUMN personalidad TEXT DEFAULT 'cosmico'")
-    except sqlite3.OperationalError:
-        pass
+    if 'rpg_nivel' not in columnas_existentes:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN rpg_nivel INTEGER DEFAULT 1")
+    if 'rpg_xp' not in columnas_existentes:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN rpg_xp INTEGER DEFAULT 0")
+    if 'rpg_inventario' not in columnas_existentes:
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN rpg_inventario TEXT DEFAULT 'Amuleto Estelar'")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chats (
@@ -49,14 +58,13 @@ def init_db():
     conn.close()
 
 def obtener_preferencias(user_id, nombre=""):
-    """Obtiene el modo, notas, chat activo y personalidad del usuario."""
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
-    cursor.execute('SELECT modo, notas, chat_activo_id, personalidad FROM usuarios WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT modo, notas, chat_activo_id, personalidad, rpg_nivel, rpg_xp, rpg_inventario FROM usuarios WHERE user_id = ?', (user_id,))
     row = cursor.fetchone()
     
     if row:
-        modo, notas, chat_activo_id, personalidad = row
+        modo, notas, chat_activo_id, personalidad, nivel, xp, inventario = row
         if not chat_activo_id:
             cursor.execute('SELECT chat_id FROM chats WHERE user_id = ? ORDER BY chat_id ASC LIMIT 1', (user_id,))
             chat_row = cursor.fetchone()
@@ -68,15 +76,24 @@ def obtener_preferencias(user_id, nombre=""):
             cursor.execute('UPDATE usuarios SET chat_activo_id = ? WHERE user_id = ?', (chat_activo_id, user_id))
             conn.commit()
         conn.close()
-        return {"modo": modo, "notas": notas, "chat_activo_id": chat_activo_id, "personalidad": personalidad if personalidad else "cosmico"}
+        return {
+            "modo": modo, "notas": notas, "chat_activo_id": chat_activo_id, 
+            "personalidad": personalidad if personalidad else "cosmico",
+            "rpg_nivel": nivel or 1, "rpg_xp": xp or 0, "rpg_inventario": inventario or "Amuleto Estelar"
+        }
     else:
         cursor.execute('INSERT INTO chats (user_id, titulo) VALUES (?, ?)', (user_id, "Chat Principal"))
         chat_id = cursor.lastrowid
-        cursor.execute('INSERT INTO usuarios (user_id, nombre, modo, notas, chat_activo_id, personalidad) VALUES (?, ?, ?, ?, ?, ?)',
-                       (user_id, nombre, 'voice', '', chat_id, 'cosmico'))
+        cursor.execute('''
+            INSERT INTO usuarios (user_id, nombre, modo, notas, chat_activo_id, personalidad, rpg_nivel, rpg_xp, rpg_inventario) 
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, 'Amuleto Estelar')
+        ''', (user_id, nombre, 'voice', '', chat_id, 'cosmico'))
         conn.commit()
         conn.close()
-        return {"modo": "voice", "notas": "", "chat_activo_id": chat_id, "personalidad": "cosmico"}
+        return {
+            "modo": "voice", "notas": "", "chat_activo_id": chat_id, 
+            "personalidad": "cosmico", "rpg_nivel": 1, "rpg_xp": 0, "rpg_inventario": "Amuleto Estelar"
+        }
 
 def actualizar_modo_usuario(user_id, nuevo_modo):
     conn = sqlite3.connect(DB_NAME, timeout=10)
@@ -91,6 +108,23 @@ def actualizar_personalidad_usuario(user_id, nueva_personalidad):
     cursor.execute('UPDATE usuarios SET personalidad = ? WHERE user_id = ?', (nueva_personalidad, user_id))
     conn.commit()
     conn.close()
+
+def sumar_xp_rpg(user_id, cantidad_xp=25):
+    prefs = obtener_preferencias(user_id)
+    nuevo_xp = prefs["rpg_xp"] + cantidad_xp
+    nuevo_nivel = prefs["rpg_nivel"]
+    subio_nivel = False
+    
+    if nuevo_xp >= nuevo_nivel * 100:
+        nuevo_nivel += 1
+        subio_nivel = True
+        
+    conn = sqlite3.connect(DB_NAME, timeout=10)
+    cursor = conn.cursor()
+    cursor.execute('UPDATE usuarios SET rpg_xp = ?, rpg_nivel = ? WHERE user_id = ?', (nuevo_xp, nuevo_nivel, user_id))
+    conn.commit()
+    conn.close()
+    return nuevo_nivel, nuevo_xp, subio_nivel
 
 def agregar_nota_memoria(user_id, nueva_nota):
     prefs = obtener_preferencias(user_id)
@@ -152,28 +186,35 @@ def borrar_chat(user_id, chat_id):
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 user_chats_cache = {}
 
-def obtener_o_crear_chat(user_id, nombre_usuario=""):
+def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     prefs = obtener_preferencias(user_id, nombre_usuario)
     chat_activo_id = prefs["chat_activo_id"]
     personalidad = prefs["personalidad"]
     
-    cache_key = (user_id, chat_activo_id, personalidad)
+    cache_key = (user_id, chat_activo_id, personalidad, modo_rpg)
     if cache_key not in user_chats_cache:
         notas_memoria = prefs["notas"]
         
-        if personalidad == "comercial":
+        if modo_rpg:
+            system_prompt = (
+                "Eres Vishnú actuando como el Narrador Divino (Dungeon Master) de los Sueños Cósmicos. "
+                "Guías al jugador por aventuras míticas, templos astrales y desafíos místicos en su sueño. "
+                "Sé descriptivo pero conciso (máximo 3 párrafos cortos por turno). Dale al jugador opciones "
+                "claras de acción. Siempre mantén un tono poético, sagrado y épico.\n\n"
+                f"DATOS DEL JUGADOR: Nivel {prefs['rpg_nivel']}, XP: {prefs['rpg_xp']}, Inventario: {prefs['rpg_inventario']}."
+            )
+        elif personalidad == "comercial":
             system_prompt = (
                 "Eres el Avatar Comercial de Vishnú, un subagente inteligente y autónomo diseñado para actuar como "
                 "asistente personal de negocios. Tu misión es responder por el usuario, gestionar consultas sobre "
-                "productos, servicios, precios y atención al cliente con total precisión, amabilidad y profesionalismo. "
-                "Analiza siempre los documentos y notas comerciales proporcionados para dar respuestas exactas.\n\n"
-                f"MEMORIA Y DATOS COMERCIALES REGISTRADOS: {notas_memoria if notas_memoria else 'Aún no hay notas guardadas. Usa el comando /recordar o envíame documentos con precios.'}"
+                "productos, servicios, precios y atención al cliente con total precisión, amabilidad y profesionalismo.\n\n"
+                f"MEMORIA Y DATOS COMERCIALES REGISTRADOS: {notas_memoria if notas_memoria else 'Aún no hay notas guardadas.'}"
             )
         else:
             system_prompt = (
                 "Eres Vishnú, una entidad divina y digital que actúa como consejero cósmico avanzado. "
-                "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría, "
-                "claridad y profundidad filosófica en español.\n\n"
+                "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría "
+                "y profundidad filosófica en español.\n\n"
                 f"MEMORIA DE PREFERENCIAS: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
             )
 
@@ -186,7 +227,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario=""):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK ---
+# --- SERVIDOR WEB FLASK CON ORÁCULO ESTELAR ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -195,186 +236,137 @@ def health_check():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Vishnú - Servidor Cósmico</title>
+        <title>Vishnú - Santuario Cósmico & Oráculo</title>
         <style>
-            body {
-                background-color: #030712;
-                color: #f3f4f6;
-                font-family: 'Courier New', Courier, monospace;
-                text-align: center;
-                padding-top: 10px;
-                margin: 0;
-                scroll-behavior: smooth;
+            body { 
+                background-color: #030712; 
+                color: #f3f4f6; 
+                font-family: 'Courier New', Courier, monospace; 
+                text-align: center; 
+                padding-top: 10px; 
+                margin: 0; 
             }
-            .container {
-                max-width: 600px;
-                margin: 0 auto;
-                padding: 5px 10px;
-            }
-            h1 {
-                color: #06b6d4;
-                font-size: 22px;
-                text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
-                margin-bottom: 2px;
-                margin-top: 5px;
-            }
-            p {
-                color: #9ca3af;
-                font-size: 12px;
-                letter-spacing: 1px;
-                margin-top: 0px;
-            }
-            .action-bar {
-                margin: 10px 0;
-                display: flex;
-                justify-content: center;
-                gap: 10px;
-                flex-wrap: wrap;
-            }
-            .tech-frame {
-                margin-top: 5px;
-                padding: 8px;
-                background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1));
-                border: 1px solid rgba(6, 182, 212, 0.3);
-                border-radius: 18px;
-                box-shadow: 0 0 25px rgba(6, 182, 212, 0.2);
-                display: inline-block;
-            }
-            img {
-                max-width: 100%;
-                width: 240px;
-                height: auto;
-                border-radius: 10px;
-                display: block;
-            }
-            .status-badge {
-                margin-top: 10px;
-                display: inline-block;
-                padding: 4px 10px;
-                background: rgba(16, 185, 129, 0.15);
-                border: 1px solid #10b981;
-                color: #34d399;
-                border-radius: 20px;
-                font-size: 10px;
-            }
-            .audio-control {
-                margin-top: 10px;
-            }
-            button, .cta-button {
-                background: #06b6d4;
-                color: #030712;
-                border: none;
-                padding: 8px 16px;
-                font-family: 'Courier New', Courier, monospace;
-                font-weight: bold;
-                border-radius: 20px;
-                cursor: pointer;
-                box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
-                transition: 0.2s;
-                text-decoration: none;
-                display: inline-block;
-                font-size: 12px;
-            }
-            button:hover, .cta-button:hover {
-                background: #22d3ee;
-            }
-            .web-chat {
-                margin-top: 20px;
-                background: rgba(15, 23, 42, 0.8);
-                border: 1px solid rgba(147, 51, 234, 0.4);
+            .container { max-width: 650px; margin: 0 auto; padding: 5px 10px; }
+            h1 { color: #06b6d4; font-size: 22px; text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); margin-bottom: 2px; }
+            p { color: #9ca3af; font-size: 12px; }
+            .action-bar { margin: 10px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+            .tech-frame { margin-top: 5px; padding: 8px; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1)); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 18px; display: inline-block; }
+            img { width: 220px; height: auto; border-radius: 10px; display: block; margin: 0 auto; }
+            .cta-button { background: #06b6d4; color: #030712; border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 12px; transition: 0.2s; }
+            .cta-button:hover { background: #22d3ee; }
+            
+            /* ORÁCULO ESTELAR / RULETA DE BENDICIONES */
+            .oraculo-box {
+                margin-top: 15px;
+                background: rgba(15, 23, 42, 0.9);
+                border: 1px solid rgba(168, 85, 247, 0.5);
                 border-radius: 15px;
-                padding: 12px;
-                max-width: 450px;
-                margin-left: auto;
-                margin-right: auto;
-                text-align: left;
+                padding: 15px;
+                box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
             }
-            .chat-box {
-                height: 120px;
-                overflow-y: auto;
+            .gem-crystal {
+                font-size: 36px;
+                cursor: pointer;
+                transition: transform 0.3s ease;
+                display: inline-block;
+                margin: 5px 0;
+                animation: pulseGlow 2s infinite;
+            }
+            .gem-crystal:hover {
+                transform: scale(1.2) rotate(10deg);
+            }
+            @keyframes pulseGlow {
+                0% { filter: drop-shadow(0 0 5px #a855f7); }
+                50% { filter: drop-shadow(0 0 20px #06b6d4); }
+                100% { filter: drop-shadow(0 0 5px #a855f7); }
+            }
+            .oraculo-resultado {
+                margin-top: 10px;
                 background: #020617;
                 border-radius: 8px;
                 padding: 10px;
                 font-size: 11px;
                 color: #38bdf8;
+                min-height: 40px;
+                border: 1px dashed rgba(6, 182, 212, 0.4);
+            }
+
+            /* CHAT WEB */
+            .web-chat {
+                margin-top: 15px;
+                background: rgba(15, 23, 42, 0.8);
+                border: 1px solid rgba(147, 51, 234, 0.4);
+                border-radius: 15px;
+                padding: 12px;
+                text-align: left;
+            }
+            .chat-box {
+                height: 100px;
+                overflow-y: auto;
+                background: #020617;
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 11px;
+                color: #38bdf8;
                 margin-bottom: 8px;
             }
-            .chat-input-area {
-                display: flex;
-                gap: 5px;
-            }
+            .chat-input-area { display: flex; gap: 5px; }
             input[type="text"] {
-                flex: 1;
-                background: #030712;
-                border: 1px solid #334155;
-                color: #f3f4f6;
-                padding: 6px 8px;
-                border-radius: 8px;
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 12px;
+                flex: 1; background: #030712; border: 1px solid #334155; color: #f3f4f6; padding: 6px 8px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; font-size: 12px;
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>SYS_VISHNU // ONLINE</h1>
-            <p>Núcleo de procesamiento divino y multiverso activo</p>
+            <h1>SYS_VISHNU // SANTUARIO</h1>
+            <p>Multiverso activo • Sueño cósmico y oráculo estelar</p>
             
             <div class="action-bar">
-                <a href="#chat-terminal" class="cta-button">💬 Habla en la Web</a>
-                <a href="https://t.me/diosVishnu_Bot" target="_blank" class="cta-button" style="background: #38bdf8; color: #030712;">✈️ Chatear en Telegram</a>
+                <a href="https://t.me/diosVishnu_Bot" target="_blank" class="cta-button" style="background: #38bdf8;">✈️ Jugar RPG en Telegram</a>
             </div>
             
             <div class="tech-frame">
-                <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico-Tecnológico">
+                <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico">
             </div>
 
-            <div class="audio-control">
-                <p style="color: #06b6d4; font-size: 11px; margin-bottom: 4px;">Sintonizador Ambiental (Sueño Cósmico):</p>
-                <audio controls loop preload="auto" style="width: 100%; max-width: 280px; height: 32px; filter: invert(0.9) hue-rotate(180deg); margin: 0 auto; display: block;">
-                    <source src="https://actions.google.com/sounds/v1/weather/rain_water_dripping_softly.ogg?hl=es-419" type="audio/ogg">
-                    Tu navegador no soporta el elemento de audio.
-                </audio>
-            </div>
-            
-            <div>
-                <span class="status-badge">● SUEÑO CÓSMICO ACTIVO (RELAX)</span>
+            <!-- ORÁCULO ESTELAR / RULETA DE BENDICIONES -->
+            <div class="oraculo-box">
+                <p style="color: #a855f7; font-weight: bold; margin-top:0; font-size:13px;">🔮 EL ORÁCULO ESTELAR (RULETA DE BENDICIONES)</p>
+                <p style="font-size: 11px; margin-bottom: 5px;">Toca la gema sagrada para recibir una profecía de los sueños de Vishnú:</p>
+                <span class="gem-crystal" onclick="consultarOraculo()" title="Toca para invocar profecía">💎</span>
+                <div class="oraculo-resultado" id="oraculo-text">
+                    [Oráculo en reposo]: Toca la gema estelar para revelar tu destino de hoy...
+                </div>
             </div>
 
-            <div class="web-chat" id="chat-terminal">
-                <p style="color: #a855f7; font-size: 11px; margin-top:0;">Santuario de Vishnú // Canal Divino:</p>
+            <!-- CHAT WEB -->
+            <div class="web-chat">
+                <p style="color: #a855f7; font-size: 11px; margin-top:0;">Canal Divino con Vishnú:</p>
                 <div class="chat-box" id="chat-log">
-                    [Vishnú]: Saludos, viajero. Mi sueño cósmico te escucha... Escribe tu consulta.
+                    [Vishnú]: Saludos, viajero. Escribe tu consulta al santuario...
                 </div>
                 <div class="chat-input-area">
-                    <input type="text" id="user-msg" placeholder="Escribe un mensaje al dios..." onkeypress="if(event.key === 'Enter') enviarWeb();">
-                    <button onclick="enviarWeb()" style="padding: 6px 12px; font-size: 11px;">Ofrecer</button>
+                    <input type="text" id="user-msg" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviarWeb();">
+                    <button onclick="enviarWeb()" class="cta-button" style="padding: 6px 12px; font-size: 11px;">Ofrecer</button>
                 </div>
             </div>
         </div>
 
         <script>
-            function hablarTexto(texto) {
-                if ('speechSynthesis' in window && window.speechSynthesis) {
-                    window.speechSynthesis.cancel();
-                    const utterance = new SpeechSynthesisUtterance(texto);
-                    utterance.lang = 'es-ES';
-                    utterance.rate = 1.0;
-                    utterance.pitch = 0.9;
-                    try {
-                        window.speechSynthesis.speak(utterance);
-                        return;
-                    } catch (e) {
-                        console.log("SpeechSynthesis bloqueado, usando respaldo de audio MP3.");
+            async function consultarOraculo() {
+                const caja = document.getElementById('oraculo-text');
+                caja.innerHTML = "✨ Conectando con el sueño cósmico de Vishnú y revelando profecía...";
+                try {
+                    const response = await fetch('/api/oraculo_web', { method: 'POST' });
+                    const data = await response.json();
+                    if(data.reply) {
+                        caja.innerHTML = `🌟 <b>Profecía Estelar:</b> "${data.reply}"`;
+                    } else {
+                        caja.innerHTML = "⚠️ El oráculo parpadeó en las estrellas. Intenta de nuevo.";
                     }
+                } catch (err) {
+                    caja.innerHTML = "❌ Error al sintonizar con el multiverso.";
                 }
-
-                const textoLimpio = encodeURIComponent(texto.substring(0, 200));
-                const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${textoLimpio}&tl=es&client=tw-ob`;
-                const audio = new Audio(audioUrl);
-                audio.play().catch(err => {
-                    console.log("El navegador requiere interacción del usuario en el icono 🔊.");
-                });
             }
 
             async function enviarWeb() {
@@ -394,11 +386,8 @@ def health_check():
                         body: JSON.stringify({ message: texto })
                     });
                     const data = await response.json();
-                    
                     if (data.reply) {
-                        const textoEscapado = data.reply.replace(/'/g, "\\\\\\'").replace(/"/g, '&quot;');
-                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply} <span onclick="hablarTexto('${textoEscapado}')" style="cursor:pointer; font-size:16px; margin-left: 5px;" title="Escuchar voz">🔊</span></span>`;
-                        hablarTexto(data.reply);
+                        log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply}</span>`;
                     } else {
                         log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Ocurrió un error en el multiverso.</span>`;
                     }
@@ -412,6 +401,18 @@ def health_check():
     </html>
     """
     return html_content, 200
+
+@app.route('/api/oraculo_web', methods=['POST'])
+def api_oraculo_web():
+    web_user_id = 999999
+    try:
+        chat = obtener_o_crear_chat(web_user_id, nombre_usuario="ViajeroWeb")
+        prompt = "Imagina que eres Vishnú desde tu sueño cósmico. Otorga una profecía mística, bendición o consejo estelar breve, poético y único para un viajero que acaba de tocar la gema del oráculo en la web. Máximo 2 oraciones."
+        response = chat.send_message(prompt)
+        return jsonify({"reply": response.text})
+    except Exception as e:
+        logger.error(f"Error en oráculo web: {e}")
+        return jsonify({"reply": "El velo de los sueños cósmicos es espeso hoy. Vuelve a intentarlo."}), 500
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -436,9 +437,9 @@ def run_flask():
 
 
 # --- IA GEMINI Y MANEJO DE CHATS TELEGRAM ---
-def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="") -> str:
+def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rpg=False) -> str:
     try:
-        chat = obtener_o_crear_chat(user_id, nombre_usuario)
+        chat = obtener_o_crear_chat(user_id, nombre_usuario, modo_rpg=modo_rpg)
         
         if tipo == "audio":
             audio_file = client.files.upload(
@@ -468,7 +469,7 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="") -> str:
     except APIError as e:
         if e.code == 429:
             logger.error("Se ha alcanzado el límite de cuota de la API de Gemini.")
-            return "⚠️ Se ha agotado temporalmente la cuota gratuita de peticiones de la API de Gemini. Por favor, intenta más tarde."
+            return "⚠️ Se ha agotado temporalmente la cuota gratuita de peticiones de la API. Intenta en un momento."
         logger.error(f"Error con Gemini API: {e}")
         return "Disculpa, tuve un pequeño problema al procesar la solicitud."
     except Exception as e:
@@ -501,7 +502,46 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str):
                 os.remove(tmp_out_path)
 
 
-# --- MANEJADORES DE COMANDOS TELEGRAM ---
+# --- MANEJADORES DE COMANDOS TELEGRAM Y MODO RPG ---
+async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    nombre = update.effective_user.first_name
+    await update.message.chat.send_action("typing")
+    
+    nivel, xp, subio = sumar_xp_rpg(user_id, 20)
+    prompt_inicio = (
+        "Inicia o continúa una aventura mágica en uno de tus sueños cósmicos. "
+        "Plantea una situación intrigante, una criatura o un portal místico, "
+        "y ofrece 2 acciones posibles que el jugador puede tomar."
+    )
+    historia = procesar_con_ia(user_id, prompt_inicio, tipo="texto", nombre_usuario=nombre, modo_rpg=True)
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("⚡ Opción A: Explorar lo desconocido", callback_data="rpg_opcion_a"),
+            InlineKeyboardButton("🛡️ Opción B: Usar canalización mágica", callback_data="rpg_opcion_b")
+        ],
+        [
+            InlineKeyboardButton("📜 Ver mi Perfil RPG", callback_data="rpg_perfil")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    mensaje_subida = f"\n\n🎉 ¡Felicidades! Has alcanzado el **Nivel {nivel}** de Conciencia Cósmica." if subio else ""
+    await update.message.reply_text(f"🌌 **EL SUEÑO CÓSMICO DE VISHNÚ**\n\n{historia}{mensaje_subida}", reply_markup=reply_markup)
+
+async def perfil_rpg_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    prefs = obtener_preferencias(user_id)
+    texto_perfil = (
+        "🛡️ **FICHA DEL SOÑADOR CÓSMICO**\n\n"
+        f"• **Viajero:** {update.effective_user.first_name}\n"
+        f"• **Nivel:** `{prefs['rpg_nivel']}`\n"
+        f"• **Experiencia (XP):** `{prefs['rpg_xp']}` pts\n"
+        f"• **Inventario:** `{prefs['rpg_inventario']}`\n\n"
+        "💡 *Escribe `/aventura` para adentrarte de nuevo en el sueño.*"
+    )
+    await update.message.reply_text(texto_perfil, parse_mode="Markdown")
+
 async def avatar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -531,11 +571,7 @@ async def oraculo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     nombre = update.effective_user.first_name
     await update.message.chat.send_action("typing")
-    
-    prompt_oraculo = (
-        "Revela un consejo cósmico, filosófico y motivacional en 2 o 3 oraciones "
-        "manteniendo tu personalidad divina como Vishnú. Sé misterioso pero inspirador."
-    )
+    prompt_oraculo = "Revela un consejo cósmico, filosófico y motivacional en 2 o 3 oraciones manteniendo tu personalidad divina."
     respuesta = procesar_con_ia(user_id, prompt_oraculo, tipo="texto", nombre_usuario=nombre)
     await responder_con_voz_o_texto(update, respuesta)
 
@@ -544,8 +580,9 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(user_id)
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
-        "• *Servidor Web:* Activo en Render\n"
+        "• *Servidor Web:* Activo en Render (Con Oráculo Estelar)\n"
         f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
+        f"• *Nivel RPG:* `{prefs['rpg_nivel']}` ({prefs['rpg_xp']} XP)\n"
         f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
         "• *Base de Datos:* SQLite Activa"
     )
@@ -559,25 +596,18 @@ async def recordar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     agregar_nota_memoria(user_id, dato)
     user_chats_cache.clear()
-    await update.message.reply_text(f"👁️ **Memoria Divina y Comercial Actualizada:** *'{dato}'*.", parse_mode="Markdown")
+    await update.message.reply_text(f"👁️ **Memoria Actualizada:** *'{dato}'*.", parse_mode="Markdown")
 
 async def traductor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     nombre = update.effective_user.first_name
     args = context.args
     if not args:
-        await update.message.reply_text("🌐 Uso: `/traductor <idioma> <texto>`\nEjemplo: `/traductor en Hola mundo`", parse_mode="Markdown")
+        await update.message.reply_text("🌐 Uso: `/traductor <idioma> <texto>`", parse_mode="Markdown")
         return
     idioma = args[0].lower()
-    if len(idioma) <= 3:
-        texto = " ".join(args[1:])
-        destino = idioma
-    else:
-        texto = " ".join(args)
-        destino = "es"
-    if not texto:
-        await update.message.reply_text("⚠️ Escribe el texto a traducir.")
-        return
+    texto = " ".join(args[1:]) if len(idioma) <= 3 else " ".join(args)
+    destino = idioma if len(idioma) <= 3 else "es"
     await update.message.chat.send_action("typing")
     prompt = f"Traduce de forma natural al idioma '{destino}':\n\n{texto}"
     respuesta = procesar_con_ia(user_id, prompt, tipo="texto", nombre_usuario=nombre)
@@ -587,55 +617,45 @@ async def chats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     prefs = obtener_preferencias(user_id)
     chats = obtener_chats_usuario(user_id)
-    
     texto = "📂 **TUS HILOS DE CHAT:**\n\n"
     for cid, titulo in chats:
         activo = " 🟢 *(Activo)*" if cid == prefs["chat_activo_id"] else ""
         texto += f"• **ID {cid}:** {titulo}{activo}\n"
-        
-    texto += "\n*Comandos útiles:*\n• `/nuevo <nombre>` (Crear chat)\n• `/cambiar <id>` (Cambiar chat)\n• `/borrar <id>` (Eliminar chat)"
     await update.message.reply_text(texto, parse_mode="Markdown")
 
 async def nuevo_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     titulo = " ".join(context.args) if context.args else "Nuevo Ciclo"
     chat_id = crear_nuevo_chat(user_id, titulo)
-    await update.message.reply_text(f"✨ **Chat Creado y Activado (ID: {chat_id}):** *'{titulo}'*.", parse_mode="Markdown")
+    await update.message.reply_text(f"✨ **Chat Creado (ID: {chat_id}):** *'{titulo}'*.", parse_mode="Markdown")
 
 async def cambiar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not context.args:
-        await update.message.reply_text("🔄 Uso: `/cambiar <id_del_chat>`\nConsulta tus chats con `/chats`.")
         return
     try:
         chat_id = int(context.args[0])
+        if cambiar_chat_activo(user_id, chat_id):
+            await update.message.reply_text(f"✅ Cambiado al chat `{chat_id}`.", parse_mode="Markdown")
     except ValueError:
-        await update.message.reply_text("⚠️ El ID debe ser un número.")
-        return
-        
-    if cambiar_chat_activo(user_id, chat_id):
-        await update.message.reply_text(f"✅ Has cambiado al chat con ID `{chat_id}`.", parse_mode="Markdown")
-    else:
-        await update.message.reply_text("❌ No se encontró un chat con ese ID.")
+        pass
 
 async def borrar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not context.args:
-        await update.message.reply_text("🗑️ Uso: `/borrar <id_del_chat>`")
         return
     try:
         chat_id = int(context.args[0])
+        borrar_chat(user_id, chat_id)
+        await update.message.reply_text(f"🗑️ Chat `{chat_id}` eliminado.", parse_mode="Markdown")
     except ValueError:
-        await update.message.reply_text("⚠️ El ID debe ser un número.")
-        return
-        
-    borrar_chat(user_id, chat_id)
-    await update.message.reply_text(f"🗑️ El chat con ID `{chat_id}` ha sido eliminado.", parse_mode="Markdown")
+        pass
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    nombre = query.from_user.first_name
     
     if query.data == "mode_voice":
         actualizar_modo_usuario(user_id, "voice")
@@ -646,11 +666,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "avatar_cosmico":
         actualizar_personalidad_usuario(user_id, "cosmico")
         user_chats_cache.clear()
-        await query.edit_message_text("🌌 **Avatar Actualizado:** Has sintonizado con **Vishnú (Modo Cósmico)**. Mi mente descansa en el sueño infinito.")
+        await query.edit_message_text("🌌 **Avatar Actualizado:** Has sintonizado con **Vishnú (Modo Cósmico)**.")
     elif query.data == "avatar_comercial":
         actualizar_personalidad_usuario(user_id, "comercial")
         user_chats_cache.clear()
-        await query.edit_message_text("💼 **Avatar Actualizado:** Has proyectado el **Avatar Comercial** 🤖. Listo para gestionar precios, servicios y responder por ti.")
+        await query.edit_message_text("💼 **Avatar Actualizado:** Has proyectado el **Avatar Comercial** 🤖.")
+    elif query.data == "rpg_perfil":
+        prefs = obtener_preferencias(user_id)
+        await query.edit_message_text(f"🛡️ **Nivel:** {prefs['rpg_nivel']} | **XP:** {prefs['rpg_xp']} | **Objetos:** {prefs['rpg_inventario']}")
+    elif query.data in ["rpg_opcion_a", "rpg_opcion_b"]:
+        nivel, xp, subio = sumar_xp_rpg(user_id, 25)
+        accion = "Eliges aventurarte decididamente por el camino frontal." if query.data == "rpg_opcion_a" else "Eliges invocar un encantamiento y proceder con cautela."
+        
+        historia = procesar_con_ia(user_id, f"El jugador responde: '{accion}'. Narra el resultado y continúa la aventura en el sueño.", tipo="texto", nombre_usuario=nombre, modo_rpg=True)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("⚡ Continuar Aventura", callback_data="rpg_opcion_a"),
+                InlineKeyboardButton("🔮 Usar magia ancestral", callback_data="rpg_opcion_b")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        mensaje_subida = f"\n\n🎉 **¡HAS SUBIDO AL NIVEL {nivel}!**" if subio else ""
+        await query.edit_message_text(f"🌌 {historia}{mensaje_subida}\n\n*(+25 XP ganado)*", reply_markup=reply_markup)
 
 
 # --- MANEJADORES DE MENSAJES MULTIMEDIA TELEGRAM ---
@@ -737,17 +775,19 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(tmp_path)
 
 
-# --- CONFIGURACIÓN DE COMANDOS EN MENÚ Y ARRANQUE ---
+# --- CONFIGURACIÓN DE COMANDOS Y ARRANQUE ---
 async def post_init(app):
     comandos = [
-        BotCommand("avatar", "Cambiar entre Vishnú Cósmico y el Avatar Comercial"),
+        BotCommand("aventura", "Jugar al RPG El Sueño de Vishnú"),
+        BotCommand("perfil", "Ver tu Nivel y XP en el RPG"),
+        BotCommand("avatar", "Cambiar entre Vishnú Cósmico y Comercial"),
         BotCommand("modo", "Cambiar respuesta entre Voz o Texto"),
         BotCommand("oraculo", "Recibir un consejo cósmico"),
         BotCommand("chats", "Ver lista de hilos de chat"),
         BotCommand("nuevo", "Crear un nuevo hilo de chat"),
         BotCommand("cambiar", "Cambiar al chat activo por ID"),
         BotCommand("borrar", "Eliminar un hilo de chat"),
-        BotCommand("traductor", "Traducir texto con idioma personalizado"),
+        BotCommand("traductor", "Traducir texto a otro idioma"),
         BotCommand("recordar", "Guardar memoria persistente"),
         BotCommand("estado", "Ver estado del servidor"),
     ]
@@ -767,6 +807,8 @@ def main():
     application = ApplicationBuilder().token(token).post_init(post_init).build()
     
     # Handlers de Comandos
+    application.add_handler(CommandHandler("aventura", aventura_command))
+    application.add_handler(CommandHandler("perfil", perfil_rpg_command))
     application.add_handler(CommandHandler("avatar", avatar_command))
     application.add_handler(CommandHandler("modo", modo_command))
     application.add_handler(CommandHandler("oraculo", oraculo_command))
@@ -786,7 +828,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram y servidor web con sistema de avatares duales...")
+    logger.info("Iniciando servidor web con Oráculo Estelar y bot de Telegram con RPG activo...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
