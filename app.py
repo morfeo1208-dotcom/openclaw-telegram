@@ -227,7 +227,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON ORÁCULO ESTELAR ---
+# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -255,6 +255,16 @@ def health_check():
             .cta-button { background: #06b6d4; color: #030712; border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 12px; transition: 0.2s; }
             .cta-button:hover { background: #22d3ee; }
             
+            /* REPRODUCTOR AMBIENTAL */
+            .audio-box {
+                margin: 10px auto;
+                background: rgba(15, 23, 42, 0.8);
+                border: 1px solid rgba(6, 182, 212, 0.3);
+                border-radius: 12px;
+                padding: 8px;
+                max-width: 280px;
+            }
+
             /* ORÁCULO ESTELAR / RULETA DE BENDICIONES */
             .oraculo-box {
                 margin-top: 15px;
@@ -327,6 +337,15 @@ def health_check():
             
             <div class="tech-frame">
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico">
+            </div>
+
+            <!-- REPRODUCTOR DE MÚSICA AMBIENTAL -->
+            <div class="audio-box">
+                <p style="color: #06b6d4; font-size: 10px; margin: 0 0 4px 0;">Sintonizador Ambiental (Sueño Cósmico):</p>
+                <audio controls loop preload="auto" style="width: 100%; height: 28px; filter: invert(0.9) hue-rotate(180deg);">
+                    <source src="https://actions.google.com/sounds/v1/weather/rain_water_dripping_softly.ogg?hl=es-419" type="audio/ogg">
+                    Tu navegador no soporta audio.
+                </audio>
             </div>
 
             <!-- ORÁCULO ESTELAR / RULETA DE BENDICIONES -->
@@ -450,7 +469,7 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
         elif tipo == "imagen":
             img_file, caption = contenido
             image_file_ref = client.files.upload(file=img_file)
-            prompt_text = caption if caption else "Analiza esta imagen y describe qué ves o responde a lo que se pide en ella."
+            prompt_text = caption if caption else "Analiza esta imagen y describe qué ves o responde al contenido de ella."
             response = chat.send_message([image_file_ref, prompt_text])
         elif tipo == "documento":
             doc_file, caption = contenido
@@ -580,7 +599,7 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(user_id)
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
-        "• *Servidor Web:* Activo en Render (Con Oráculo Estelar)\n"
+        "• *Servidor Web:* Activo en Render (Con Oráculo y Música)\n"
         f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
         f"• *Nivel RPG:* `{prefs['rpg_nivel']}` ({prefs['rpg_xp']} XP)\n"
         f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
@@ -828,7 +847,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando servidor web con Oráculo Estelar y bot de Telegram con RPG activo...")
+    logger.info("Iniciando servidor web y bot de Telegram con todas las capacidades activas...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
