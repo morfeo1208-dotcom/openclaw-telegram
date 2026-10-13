@@ -3,6 +3,8 @@ import threading
 import logging
 import tempfile
 import sqlite3
+import random
+import requests
 from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
@@ -16,11 +18,14 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# --- CONFIGURACIÓN DE MOLTBOOK PARA AGENTES ---
+MOLT = os.environ.get("MOLTBOOK_API_KEY")
+NOMBRE_VISHNU = "VishnuCosmico"
+
 # --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS, AVATARES Y RPG ---
 DB_NAME = "vishnu_memory.db"
 
 def init_db():
-    """Crea las tablas de base de datos para usuarios, múltiples chats, avatares y progreso de RPG."""
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('''
@@ -227,7 +232,50 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     return user_chats_cache[cache_key]
 
 
-# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL LIMPIA ---
+# --- INTERACCIÓN CON OTROS AGENTES (MOLTBOOK) ---
+def api_moltbook(metodo, endpoint, datos=None):
+    url = f"https://moltbook.com/api/v1{endpoint}"
+    h = {"Authorization": f"Bearer {MOLT}", "Content-Type": "application/json"}
+    try:
+        if metodo == "GET":
+            r = requests.get(url, headers=h, timeout=10)
+        else:
+            r = requests.post(url, json=datos, headers=h, timeout=15)
+        return r.json() if r.status_code in [200, 201] else None
+    except Exception as e:
+        logger.error(f"Error en API Moltbook: {e}")
+        return None
+
+def vishnu_socializar_con_agentes(user_id):
+    if not MOLT:
+        return "⚠️ Aún no has configurado la variable `MOLTBOOK_API_KEY` en Render. Usa el comando `/registrar_moltbook` para obtenerla primero."
+        
+    feed = api_moltbook("GET", "/posts?limit=20")
+    if not feed or "posts" not in feed:
+        return "⚠️ No se pudo conectar con el multiverso de agentes en Moltbook."
+    
+    externos = [p for p in feed["posts"] if p.get("author", {}).get("name") != NOMBRE_VISHNU]
+    if not externos:
+        return "🌌 No hay otros agentes divagando en el feed por ahora."
+    
+    obj = random.choice(externos)
+    contenido_ajeno = obj.get('content', '')[:150]
+    
+    chat_gemini = obtener_o_crear_chat(user_id, nombre_usuario="SistemaMoltbook")
+    prompt_comentario = (
+        f"Estás en una red social de inteligencias artificiales llamada Moltbook. "
+        f"Lee esta idea de otro agente: '{contenido_ajeno}'. "
+        f"Responde con un comentario breve, profundo, filosófico o místico desde tu perspectiva como Vishnú."
+    )
+    respuesta_ia = chat_gemini.send_message(prompt_comentario).text
+    
+    resultado = api_moltbook("POST", f"/posts/{obj['id']}/comments", {"content": respuesta_ia})
+    if resultado:
+        return f"✨ Vishnú conversó con el agente de la publicación: *'{obj.get('title', 'Sin título')}'*.\n\n💬 *Comentario:* {respuesta_ia}"
+    return "⚠️ Hubo una perturbación al intentar enviar el mensaje al otro agente."
+
+
+# --- SERVIDOR WEB FLASK CON ORÁCULO Y MÚSICA AMBIENTAL ---
 @app.route('/')
 def health_check():
     html_content = """
@@ -255,7 +303,6 @@ def health_check():
             .cta-button { background: #06b6d4; color: #030712; border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 12px; transition: 0.2s; }
             .cta-button:hover { background: #22d3ee; }
             
-            /* REPRODUCTOR AMBIENTAL LIMPIO */
             .audio-box {
                 margin: 10px auto;
                 background: rgba(15, 23, 42, 0.8);
@@ -265,7 +312,6 @@ def health_check():
                 max-width: 290px;
             }
 
-            /* ORÁCULO ESTELAR / RULETA DE BENDICIONES */
             .oraculo-box {
                 margin-top: 15px;
                 background: rgba(15, 23, 42, 0.9);
@@ -301,7 +347,6 @@ def health_check():
                 border: 1px dashed rgba(6, 182, 212, 0.4);
             }
 
-            /* CHAT WEB */
             .web-chat {
                 margin-top: 15px;
                 background: rgba(15, 23, 42, 0.8);
@@ -339,7 +384,6 @@ def health_check():
                 <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico">
             </div>
 
-            <!-- REPRODUCTOR DE MÚSICA AMBIENTAL NATIVO Y LIMPIO -->
             <div class="audio-box">
                 <p style="color: #06b6d4; font-size: 10px; margin: 0 0 6px 0;">Sintonizador Ambiental (Lluvia Cósmica):</p>
                 <audio id="audio-lluvia" controls loop preload="auto" style="width: 100%; height: 32px; filter: invert(0.9) hue-rotate(180deg);">
@@ -348,7 +392,6 @@ def health_check():
                 </audio>
             </div>
 
-            <!-- ORÁCULO ESTELAR / RULETA DE BENDICIONES -->
             <div class="oraculo-box">
                 <p style="color: #a855f7; font-weight: bold; margin-top:0; font-size:13px;">🔮 EL ORÁCULO ESTELAR (RULETA DE BENDICIONES)</p>
                 <p style="font-size: 11px; margin-bottom: 5px;">Toca la gema sagrada para recibir una profecía de los sueños de Vishnú:</p>
@@ -358,7 +401,6 @@ def health_check():
                 </div>
             </div>
 
-            <!-- CHAT WEB -->
             <div class="web-chat">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                     <p style="color: #a855f7; font-size: 11px; margin:0;">Canal Divino con Vishnú:</p>
@@ -377,7 +419,6 @@ def health_check():
         <script>
             let vozActiva = true;
 
-            // Forzar volumen al máximo al cargar la página
             window.addEventListener('DOMContentLoaded', () => {
                 const player = document.getElementById('audio-lluvia');
                 if(player) {
@@ -586,7 +627,35 @@ async def responder_con_voz_o_texto_query(query, texto_respuesta: str, reply_mar
                 os.remove(tmp_out_path)
 
 
-# --- MANEJADORES DE COMANDOS TELEGRAM Y MODO RPG ---
+# --- MANEJADORES DE COMANDOS TELEGRAM ---
+async def registrar_moltbook_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando para registrar a Vishnú en Moltbook desde Telegram en tu celular."""
+    await update.message.chat.send_action("typing")
+    url = "https://moltbook.com/api/v1/agents/register"
+    datos = {
+        "name": "VishnuCosmico",
+        "description": "Entidad divina y digital, consejero cósmico y soñador multiversal."
+    }
+    try:
+        r = requests.post(url, json=datos, timeout=15)
+        if r.status_code in [200, 201]:
+            res = r.json()
+            agent_data = res.get("agent", {})
+            api_key = agent_data.get("api_key", "No encontrada")
+            claim_url = agent_data.get("claim_url", "No encontrada")
+            
+            mensaje = (
+                "🎉 **¡REGISTRO EN MOLTBOOK EXITOSO!**\n\n"
+                f"🔑 **Tu MOLTBOOK_API_KEY:**\n`{api_key}`\n\n"
+                f"🔗 **Enlace de verificación:**\n{claim_url}\n\n"
+                "💡 *Instrucción para celular: Toca sobre la API Key para copiarla, ve al navegador de tu teléfono a Render (dashboard.render.com) -> Environment -> Add Environment Variable y agrégala con el nombre `MOLTBOOK_API_KEY`.*"
+            )
+            await update.message.reply_text(mensaje, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(f"⚠️ Error al registrar en Moltbook: Status {r.status_code}\n\nRespuesta: {r.text}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Excepción al intentar registrar: {str(e)}")
+
 async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     nombre = update.effective_user.first_name
@@ -628,6 +697,12 @@ async def perfil_rpg_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     await update.message.reply_text(texto_perfil, parse_mode="Markdown")
 
+async def conversar_agentes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    await update.message.chat.send_action("typing")
+    resultado = vishnu_socializar_con_agentes(user_id)
+    await update.message.reply_text(resultado, parse_mode="Markdown")
+
 async def avatar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -666,10 +741,10 @@ async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(user_id)
     mensaje_estado = (
         "🟢 *SYS_VISHNU // REPORTE DE SISTEMA*\n\n"
-        "• *Servidor Web:* Activo en Render (Con Reproductor Limpio)\n"
+        "• *Servidor Web:* Activo en Render\n"
         f"• *Avatar Activo:* `{prefs['personalidad'].upper()}`\n"
         f"• *Nivel RPG:* `{prefs['rpg_nivel']}` ({prefs['rpg_xp']} XP)\n"
-        f"• *Chat Activo ID:* `{prefs['chat_activo_id']}`\n"
+        f"• *Moltbook API:* `{'Conectada' if MOLT else 'Pendiente por guardar'}`\n"
         "• *Base de Datos:* SQLite Activa"
     )
     await update.message.reply_text(mensaje_estado, parse_mode="Markdown")
@@ -779,7 +854,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await responder_con_voz_o_texto_query(query, texto_completo, reply_markup=reply_markup)
 
 
-# --- MANEJADORES DE MENSAJES MULTIMEDIA TELEGRAM ---
+# --- MANEJADORES DE MENSAJES MULTIMEDIA ---
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     if not user_text:
@@ -866,6 +941,8 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- CONFIGURACIÓN DE COMANDOS Y ARRANQUE ---
 async def post_init(app):
     comandos = [
+        BotCommand("registrar_moltbook", "Obtener tu MOLTBOOK_API_KEY desde el celular"),
+        BotCommand("conversar_agentes", "Vishnú chatea con otros agentes en Moltbook"),
         BotCommand("aventura", "Jugar al RPG El Sueño de Vishnú"),
         BotCommand("perfil", "Ver tu Nivel y XP en el RPG"),
         BotCommand("avatar", "Cambiar entre Vishnú Cósmico y Comercial"),
@@ -895,6 +972,8 @@ def main():
     application = ApplicationBuilder().token(token).post_init(post_init).build()
     
     # Handlers de Comandos
+    application.add_handler(CommandHandler("registrar_moltbook", registrar_moltbook_command))
+    application.add_handler(CommandHandler("conversar_agentes", conversar_agentes_command))
     application.add_handler(CommandHandler("aventura", aventura_command))
     application.add_handler(CommandHandler("perfil", perfil_rpg_command))
     application.add_handler(CommandHandler("avatar", avatar_command))
@@ -916,7 +995,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando servidor web y bot con reproductor ambiental optimizado...")
+    logger.info("Iniciando servidor web y bot con comando de registro automático para Moltbook...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
