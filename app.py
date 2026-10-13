@@ -207,7 +207,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
                 "Guías al jugador por aventuras míticas, templos astrales y desafíos místicos en su sueño. "
                 "Sé descriptivo pero conciso (máximo 2 o 3 párrafos cortos por turno). Dale al jugador opciones "
                 "claras de acción tituladas explícitamente como 'Opción A' y 'Opción B'. "
-                "Si el jugador te responde por voz o con sus propias palabras, interpreta su acción dentro de la historia y continúa la aventura. "
+                "Si el jugador interactúa con botones o notas de voz, avanza la historia con fluidez. "
                 "Siempre mantén un tono poético, sagrado y épico.\n\n"
                 f"DATOS DEL JUGADOR: Nivel {prefs['rpg_nivel']}, XP: {prefs['rpg_xp']}, Inventario: {prefs['rpg_inventario']}."
             )
@@ -438,7 +438,7 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
         chat = obtener_o_crear_chat(user_id, nombre_usuario, modo_rpg=modo_rpg)
         if tipo == "audio":
             audio_file = client.files.upload(file=contenido, config=types.UploadFileConfig(mime_type='audio/ogg'))
-            prompt_audio = "Escucha esta nota de voz y responde como el Narrador del Juego ofreciento Opción A y Opción B." if modo_rpg else "Escucha este mensaje de voz y responde."
+            prompt_audio = "Escucha esta nota de voz y responde como el Narrador del Juego ofreciendo Opción A y Opción B." if modo_rpg else "Escucha este mensaje de voz y responde."
             response = chat.send_message([audio_file, prompt_audio])
         elif tipo == "imagen":
             img_file, caption = contenido
@@ -469,7 +469,6 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, reply_
         await update.message.chat.send_action("record_voice")
         tmp_out_path = None
         try:
-            # Limpiamos caracteres de formato Markdown para que la voz suene limpia
             texto_limpio = texto_respuesta.replace('*', '').replace('_', '').replace('`', '').replace('#', '')
             tts = gTTS(text=texto_limpio, lang='es')
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
@@ -487,23 +486,23 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, reply_
 async def responder_con_voz_o_texto_query(query, texto_respuesta: str, reply_markup=None):
     user_id = query.from_user.id
     prefs = obtener_preferencias(user_id)
+    
     if prefs["modo"] == "text":
         await query.edit_message_text(texto_respuesta, reply_markup=reply_markup)
     else:
         await query.message.chat.send_action("record_voice")
+        texto_limpio = texto_respuesta.replace('*', '').replace('_', '').replace('`', '').replace('#', '')
         tmp_out_path = None
         try:
-            texto_limpio = texto_respuesta.replace('*', '').replace('_', '').replace('`', '').replace('#', '')
             tts = gTTS(text=texto_limpio, lang='es')
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
                 tmp_out_path = tmp_out.name
                 tts.save(tmp_out_path)
-            await query.edit_message_text("🌌 Narrando capítulo...")
             with open(tmp_out_path, 'rb') as audio_response:
                 await query.message.reply_voice(voice=audio_response, reply_markup=reply_markup)
         except Exception as e:
-            logger.error(f"Error generando voz TTS Query: {e}")
-            await query.edit_message_text(texto_respuesta, reply_markup=reply_markup)
+            logger.error(f"Error generando voz en Callback: {e}")
+            await query.message.reply_text(texto_respuesta, reply_markup=reply_markup)
         finally:
             if tmp_out_path and os.path.exists(tmp_out_path):
                 os.remove(tmp_out_path)
@@ -689,7 +688,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
     await f.download_to_drive(tmp.name)
     try:
-        # Forzamos modo_rpg=True en audios para que escuche tu voz durante el juego sin romper la aventura
         resp = procesar_con_ia(
             user_id, 
             tmp.name, 
@@ -811,7 +809,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram con solución de voz en RPG...")
+    logger.info("Iniciando bot de Telegram...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
