@@ -206,7 +206,8 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
                 "Eres Vishnú actuando como el Narrador Divino (Dungeon Master) de los Sueños Cósmicos. "
                 "Guías al jugador por aventuras míticas, templos astrales y desafíos místicos en su sueño. "
                 "Sé descriptivo pero conciso (máximo 3 párrafos cortos por turno). Dale al jugador opciones "
-                "claras de acción. Siempre mantén un tono poético, sagrado y épico.\n\n"
+                "claras de acción tituladas explícitamente como 'Opción A' y 'Opción B'. "
+                "Siempre mantén un tono poético, sagrado y épico.\n\n"
                 f"DATOS DEL JUGADOR: Nivel {prefs['rpg_nivel']}, XP: {prefs['rpg_xp']}, Inventario: {prefs['rpg_inventario']}."
             )
         elif personalidad == "comercial":
@@ -528,14 +529,30 @@ async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     nombre = update.effective_user.first_name
     await update.message.chat.send_action("typing")
+    
     nivel, xp, subio = sumar_xp_rpg(user_id, 20)
-    historia = procesar_con_ia(user_id, "Inicia una aventura mágica en el sueño cósmico. Ofrece 2 acciones posibles.", tipo="texto", nombre_usuario=nombre, modo_rpg=True)
+    historia = procesar_con_ia(
+        user_id, 
+        "Inicia una aventura mágica en el sueño cósmico. Plantea una situación y ofrece exactamente 2 opciones de acción tituladas explícitamente como 'Opción A' y 'Opción B'.", 
+        tipo="texto", 
+        nombre_usuario=nombre, 
+        modo_rpg=True
+    )
+    
     keyboard = [
-        [InlineKeyboardButton("Opción A: Explorar", callback_data="rpg_opcion_a"), InlineKeyboardButton("Opción B: Magia", callback_data="rpg_opcion_b")],
-        [InlineKeyboardButton("Ver Perfil RPG", callback_data="rpg_perfil")]
+        [
+            InlineKeyboardButton("⚡ Opción A", callback_data="rpg_opcion_a"),
+            InlineKeyboardButton("🛡️ Opción B", callback_data="rpg_opcion_b")
+        ],
+        [
+            InlineKeyboardButton("📜 Ver Perfil RPG", callback_data="rpg_perfil")
+        ]
     ]
-    mensaje_subida = f"\n\n¡Felicidades! Has alcanzado el Nivel {nivel}." if subio else ""
-    await responder_con_voz_o_texto(update, f"EL SUEÑO CÓSMICO\n\n{historia}{mensaje_subida}", reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    mensaje_subida = f"\n\n🎉 ¡Felicidades! Has alcanzado el **Nivel {nivel}**." if subio else ""
+    
+    texto_completo = f"🌌 **EL SUEÑO CÓSMICO**\n\n{historia}{mensaje_subida}"
+    await responder_con_voz_o_texto(update, texto_completo, reply_markup=reply_markup)
 
 async def perfil_rpg_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(update.effective_user.id)
@@ -604,6 +621,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    nombre = query.from_user.first_name
+    
     if query.data == "mode_voice":
         actualizar_modo_usuario(user_id, "voice")
         await query.edit_message_text("Preferencia guardada: Voz.")
@@ -623,11 +642,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"Nivel: {p['rpg_nivel']} | XP: {p['rpg_xp']}")
     elif query.data in ["rpg_opcion_a", "rpg_opcion_b"]:
         nivel, xp, subio = sumar_xp_rpg(user_id, 25)
-        accion = "Eliges aventurarte por el camino frontal." if query.data == "rpg_opcion_a" else "Eliges invocar magia."
-        historia = procesar_con_ia(user_id, f"El jugador responde: '{accion}'. Continúa la aventura.", tipo="texto", nombre_usuario=query.from_user.first_name, modo_rpg=True)
-        keyboard = [[InlineKeyboardButton("Continuar", callback_data="rpg_opcion_a"), InlineKeyboardButton("Magia", callback_data="rpg_opcion_b")]]
-        msg_subida = f"\n\n¡HAS SUBIDO AL NIVEL {nivel}!" if subio else ""
-        await responder_con_voz_o_texto_query(query, f"{historia}{msg_subida}\n\n(+25 XP)", reply_markup=InlineKeyboardMarkup(keyboard))
+        accion = "Eliges la Opción A para avanzar audazmente." if query.data == "rpg_opcion_a" else "Eliges la Opción B para proceder con magia."
+        
+        historia = procesar_con_ia(
+            user_id, 
+            f"El jugador selecciona: '{accion}'. Continúa la aventura en el sueño cósmico ofreciendo de nuevo Opción A y Opción B de forma explícita.", 
+            tipo="texto", 
+            nombre_usuario=nombre, 
+            modo_rpg=True
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("⚡ Opción A", callback_data="rpg_opcion_a"),
+                InlineKeyboardButton("🛡️ Opción B", callback_data="rpg_opcion_b")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        mensaje_subida = f"\n\n🎉 **¡HAS SUBIDO AL NIVEL {nivel}!**" if subio else ""
+        
+        texto_completo = f"🌌 {historia}{mensaje_subida}\n\n*(+25 XP ganado)*"
+        await responder_con_voz_o_texto_query(query, texto_completo, reply_markup=reply_markup)
 
 
 # --- MANEJADORES MULTIMEDIA ---
@@ -659,7 +694,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(tmp.name): os.remove(tmp.name)
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.chat.send_action("typing>".strip(">"))
+    await update.message.chat.send_action("typing")
     doc = update.message.document
     f = await context.bot.get_file(doc.file_id)
     tmp = tempfile.NamedTemporaryFile(suffix=os.path.splitext(doc.file_name)[1] if doc.file_name else ".pdf", delete=False)
@@ -743,7 +778,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram con Keep-Alive integrado...")
+    logger.info("Iniciando bot de Telegram con Keep-Alive y RPG corregido...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
