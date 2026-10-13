@@ -205,8 +205,9 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
             system_prompt = (
                 "Eres Vishnú actuando como el Narrador Divino (Dungeon Master) de los Sueños Cósmicos. "
                 "Guías al jugador por aventuras míticas, templos astrales y desafíos místicos en su sueño. "
-                "Sé descriptivo pero conciso (máximo 3 párrafos cortos por turno). Dale al jugador opciones "
+                "Sé descriptivo pero conciso (máximo 2 o 3 párrafos cortos por turno). Dale al jugador opciones "
                 "claras de acción tituladas explícitamente como 'Opción A' y 'Opción B'. "
+                "Si el jugador te responde por voz o con sus propias palabras, interpreta su acción dentro de la historia y continúa la aventura. "
                 "Siempre mantén un tono poético, sagrado y épico.\n\n"
                 f"DATOS DEL JUGADOR: Nivel {prefs['rpg_nivel']}, XP: {prefs['rpg_xp']}, Inventario: {prefs['rpg_inventario']}."
             )
@@ -437,7 +438,8 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
         chat = obtener_o_crear_chat(user_id, nombre_usuario, modo_rpg=modo_rpg)
         if tipo == "audio":
             audio_file = client.files.upload(file=contenido, config=types.UploadFileConfig(mime_type='audio/ogg'))
-            response = chat.send_message([audio_file, "Escucha este mensaje de voz y responde."])
+            prompt_audio = "Escucha esta nota de voz y responde como el Narrador del Juego ofreciento Opción A y Opción B." if modo_rpg else "Escucha este mensaje de voz y responde."
+            response = chat.send_message([audio_file, prompt_audio])
         elif tipo == "imagen":
             img_file, caption = contenido
             response = chat.send_message([client.files.upload(file=img_file), caption or "Analiza esta imagen."])
@@ -455,6 +457,7 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
             return "Se ha agotado temporalmente la cuota gratuita de peticiones de la API de Gemini."
         return "Disculpa, tuve un problema al procesar la solicitud."
     except Exception as e:
+        logger.error(f"Error procesar_con_ia: {e}")
         return "Disculpa, ocurrió un error inesperado."
 
 async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, reply_markup=None):
@@ -466,13 +469,16 @@ async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, reply_
         await update.message.chat.send_action("record_voice")
         tmp_out_path = None
         try:
-            tts = gTTS(text=texto_respuesta, lang='es')
+            # Limpiamos caracteres de formato Markdown para que la voz suene limpia
+            texto_limpio = texto_respuesta.replace('*', '').replace('_', '').replace('`', '').replace('#', '')
+            tts = gTTS(text=texto_limpio, lang='es')
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
                 tmp_out_path = tmp_out.name
                 tts.save(tmp_out_path)
             with open(tmp_out_path, 'rb') as audio_response:
                 await update.message.reply_voice(voice=audio_response, reply_markup=reply_markup)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error generando voz TTS: {e}")
             await update.message.reply_text(texto_respuesta, reply_markup=reply_markup)
         finally:
             if tmp_out_path and os.path.exists(tmp_out_path):
@@ -487,14 +493,16 @@ async def responder_con_voz_o_texto_query(query, texto_respuesta: str, reply_mar
         await query.message.chat.send_action("record_voice")
         tmp_out_path = None
         try:
-            tts = gTTS(text=texto_respuesta, lang='es')
+            texto_limpio = texto_respuesta.replace('*', '').replace('_', '').replace('`', '').replace('#', '')
+            tts = gTTS(text=texto_limpio, lang='es')
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_out:
                 tmp_out_path = tmp_out.name
                 tts.save(tmp_out_path)
-            await query.edit_message_text("Narración Cósmica en curso...")
+            await query.edit_message_text("🌌 Narrando capítulo...")
             with open(tmp_out_path, 'rb') as audio_response:
                 await query.message.reply_voice(voice=audio_response, reply_markup=reply_markup)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error generando voz TTS Query: {e}")
             await query.edit_message_text(texto_respuesta, reply_markup=reply_markup)
         finally:
             if tmp_out_path and os.path.exists(tmp_out_path):
@@ -549,9 +557,9 @@ async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    mensaje_subida = f"\n\n🎉 ¡Felicidades! Has alcanzado el **Nivel {nivel}**." if subio else ""
+    mensaje_subida = f"\n\n🎉 ¡Felicidades! Has alcanzado el Nivel {nivel}." if subio else ""
     
-    texto_completo = f"🌌 **EL SUEÑO CÓSMICO**\n\n{historia}{mensaje_subida}"
+    texto_completo = f"🌌 EL SUEÑO CÓSMICO\n\n{historia}{mensaje_subida}"
     await responder_con_voz_o_texto(update, texto_completo, reply_markup=reply_markup)
 
 async def perfil_rpg_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -659,28 +667,53 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        mensaje_subida = f"\n\n🎉 **¡HAS SUBIDO AL NIVEL {nivel}!**" if subio else ""
+        mensaje_subida = f"\n\n🎉 ¡HAS SUBIDO AL NIVEL {nivel}!" if subio else ""
         
-        texto_completo = f"🌌 {historia}{mensaje_subida}\n\n*(+25 XP ganado)*"
+        texto_completo = f"🌌 {historia}{mensaje_subida}\n\n(+25 XP ganado)"
         await responder_con_voz_o_texto_query(query, texto_completo, reply_markup=reply_markup)
 
 
-# --- MANEJADORES MULTIMEDIA ---
+# --- MANEJADORES MULTIMEDIA CON CORRECCIÓN DE VOZ EN RPG ---
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text:
         await update.message.chat.send_action("typing")
-        await responder_con_voz_o_texto(update, procesar_con_ia(update.effective_user.id, update.message.text, tipo="texto", nombre_usuario=update.effective_user.first_name))
+        await responder_con_voz_o_texto(
+            update, 
+            procesar_con_ia(update.effective_user.id, update.message.text, tipo="texto", nombre_usuario=update.effective_user.first_name)
+        )
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     await update.message.chat.send_action("typing")
     f = await context.bot.get_file(update.message.voice.file_id)
     tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
     await f.download_to_drive(tmp.name)
     try:
-        resp = procesar_con_ia(update.effective_user.id, tmp.name, tipo="audio", nombre_usuario=update.effective_user.first_name)
-        await responder_con_voz_o_texto(update, resp)
+        # Forzamos modo_rpg=True en audios para que escuche tu voz durante el juego sin romper la aventura
+        resp = procesar_con_ia(
+            user_id, 
+            tmp.name, 
+            tipo="audio", 
+            nombre_usuario=update.effective_user.first_name, 
+            modo_rpg=True
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("⚡ Opción A", callback_data="rpg_opcion_a"),
+                InlineKeyboardButton("🛡️ Opción B", callback_data="rpg_opcion_b")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        nivel, xp, subio = sumar_xp_rpg(user_id, 25)
+        mensaje_subida = f"\n\n🎉 ¡HAS SUBIDO AL NIVEL {nivel}!" if subio else ""
+        
+        texto_completo = f"🌌 {resp}{mensaje_subida}\n\n(+25 XP ganado)"
+        await responder_con_voz_o_texto(update, texto_completo, reply_markup=reply_markup)
     finally:
-        if os.path.exists(tmp.name): os.remove(tmp.name)
+        if os.path.exists(tmp.name):
+            os.remove(tmp.name)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
@@ -744,7 +777,7 @@ def main():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # Iniciar Sistema Keep-Alive en segundo plano para evitar que Render duerma la app
+    # Iniciar Sistema Keep-Alive en segundo plano
     keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
     keep_alive_thread.start()
 
@@ -778,7 +811,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
     
-    logger.info("Iniciando bot de Telegram con Keep-Alive y RPG corregido...")
+    logger.info("Iniciando bot de Telegram con solución de voz en RPG...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
