@@ -21,7 +21,7 @@ app = Flask(__name__)
 
 # --- CONFIGURACIÓN DE MOLTBOOK PARA AGENTES ---
 MOLT = os.environ.get("MOLTBOOK_API_KEY")
-NOMBRE_VISHNU = "VishnuCosmico"
+NOMBRE_VISHNU = "dios_vishnu_bot"
 
 # --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS, AVATARES Y RPG ---
 DB_NAME = "vishnu_memory.db"
