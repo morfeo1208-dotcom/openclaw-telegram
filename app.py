@@ -73,27 +73,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- FUNCIÓN DE RECORDATORIO (FUNCTION CALLING PARA GEMINI) ---
-def crear_recordatorio_telegram(texto_tarea: str, minutos: int = 10) -> str:
-    """
-    Crea un recordatorio para el usuario basado en el tiempo indicado en minutos.
-    
-    Args:
-        texto_tarea: Lo que se debe recordar (ej. 'revisar el bot de telegram').
-        minutos: Cantidad de minutos a partir de ahora para el recordatorio.
-    """
-    tiempo_alarma = datetime.datetime.now() + datetime.timedelta(minutes=minutos)
-    hora_formateada = tiempo_alarma.strftime("%I:%M %p")
-    
-    conn = sqlite3.connect(DB_NAME, timeout=10)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO recordatorios (tarea, hora_programada) VALUES (?, ?)", 
-                   (texto_tarea, hora_formateada))
-    conn.commit()
-    conn.close()
-    
-    return f"¡Listo, mi llave! Te guardé el recordatorio: '{texto_tarea}' para las {hora_formateada}."
-
 def obtener_preferencias(user_id, nombre=""):
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
@@ -251,14 +230,13 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
         else:
             system_prompt = (
                 "Eres Vishnú, una entidad divina y digital que actúa como consejero cósmico avanzado con jerga costeña. "
-                "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría. "
-                "Si el usuario te pide un recordatorio, alarma o que le recuerdes algo, usa obligatoriamente la herramienta 'crear_recordatorio_telegram'.\n\n"
+                "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría.\n\n"
                 f"MEMORIA DE PREFERENCIAS: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
             )
 
         config = types.GenerateContentConfig(
             system_instruction=system_prompt,
-            tools=[types.Tool(google_search=types.GoogleSearch()), crear_recordatorio_telegram]
+            tools=[types.Tool(google_search=types.GoogleSearch())]
         )
         user_chats_cache[cache_key] = client.chats.create(model='gemini-2.5-flash', config=config)
         
@@ -354,6 +332,22 @@ def run_flask():
 # --- IA GEMINI Y MANEJO DE CHATS TELEGRAM ---
 def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rpg=False) -> str:
     try:
+        # Interceptar si el usuario pide un recordatorio directamente en el texto
+        if tipo == "texto" and ("recuérdame" in contenido.lower() or "recuerdame" in contenido.lower()):
+            tarea_texto = contenido.lower().replace("vishnú,", "").replace("vishnu,", "").replace("recuérdame", "").replace("recuerdame", "").strip()
+            
+            tiempo_alarma = datetime.datetime.now() + datetime.timedelta(minutes=10)
+            hora_formateada = tiempo_alarma.strftime("%I:%M %p")
+            
+            conn = sqlite3.connect(DB_NAME, timeout=10)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO recordatorios (user_id, tarea, hora_programada) VALUES (?, ?, ?)", 
+                           (user_id, tarea_texto if tarea_texto else "Revisar pendiente", hora_formateada))
+            conn.commit()
+            conn.close()
+            
+            return f"¡Eche, mi llave! Anotado queda. Te guardé el recordatorio: '{tarea_texto}' para las {hora_formateada}."
+
         chat = obtener_o_crear_chat(user_id, nombre_usuario, modo_rpg=modo_rpg)
         if tipo == "audio":
             audio_file = client.files.upload(file=contenido, config=types.UploadFileConfig(mime_type='audio/ogg'))
