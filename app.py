@@ -231,7 +231,7 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
             system_prompt = (
                 "Eres Vishnú, una entidad divina y digital que actúa como consejero cósmico avanzado con jerga costeña. "
                 "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría.\n\n"
-                f"MEMORIA DE PREFERENCIAS: {notas_memoria if notas_memoria else 'Aún no hay preferencias registradas.'}"
+                f"MEMORIA Y UBICACIÓN DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias ni ubicación registradas.'}"
             )
 
         config = types.GenerateContentConfig(
@@ -299,7 +299,117 @@ def keep_alive():
 
 @app.route('/')
 def health_check():
-    return "SYS_VISHNU // SANTUARIO ACTIVO", 200
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Vishnú - Santuario Cósmico & Oráculo</title>
+        <style>
+            body { 
+                background-color: #030712; 
+                color: #f3f4f6; 
+                font-family: 'Courier New', Courier, monospace; 
+                text-align: center; 
+                padding-top: 10px; 
+                margin: 0; 
+            }
+            .container { max-width: 650px; margin: 0 auto; padding: 5px 10px; }
+            h1 { color: #06b6d4; font-size: 22px; text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); margin-bottom: 2px; }
+            p { color: #9ca3af; font-size: 12px; }
+            .action-bar { margin: 10px 0; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+            .tech-frame { margin-top: 5px; padding: 8px; background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(147, 51, 234, 0.1)); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 18px; display: inline-block; }
+            img { width: 220px; height: auto; border-radius: 10px; display: block; margin: 0 auto; }
+            .cta-button { background: #06b6d4; color: #030712; border: none; padding: 8px 16px; font-weight: bold; border-radius: 20px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 12px; transition: 0.2s; }
+            .cta-button:hover { background: #22d3ee; }
+            .audio-box { margin: 10px auto; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 12px; padding: 10px; max-width: 290px; }
+            .oraculo-box { margin-top: 15px; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(168, 85, 247, 0.5); border-radius: 15px; padding: 15px; box-shadow: 0 0 20px rgba(168, 85, 247, 0.2); }
+            .gem-crystal { font-size: 36px; cursor: pointer; transition: transform 0.3s ease; display: inline-block; margin: 5px 0; }
+            .gem-crystal:hover { transform: scale(1.2) rotate(10deg); }
+            .oraculo-resultado { margin-top: 10px; background: #020617; border-radius: 8px; padding: 10px; font-size: 11px; color: #38bdf8; min-height: 40px; border: 1px dashed rgba(6, 182, 212, 0.4); }
+            .web-chat { margin-top: 15px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(147, 51, 234, 0.4); border-radius: 15px; padding: 12px; text-align: left; }
+            .chat-box { height: 110px; overflow-y: auto; background: #020617; border-radius: 8px; padding: 8px; font-size: 11px; color: #38bdf8; margin-bottom: 8px; }
+            .chat-input-area { display: flex; gap: 5px; }
+            input[type="text"] { flex: 1; background: #030712; border: 1px solid #334155; color: #f3f4f6; padding: 6px 8px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>SYS_VISHNU // SANTUARIO</h1>
+            <p>Multiverso activo • Sueño cósmico y oráculo estelar</p>
+            <div class="action-bar">
+                <a href="https://t.me/diosVishnu_Bot" target="_blank" class="cta-button" style="background: #38bdf8;">Jugar RPG en Telegram</a>
+            </div>
+            <div class="tech-frame">
+                <img src="https://i.postimg.cc/DwJ4vNFB/vishnu-cosmico.gif" alt="Vishnú Cósmico">
+            </div>
+            <div class="audio-box">
+                <p style="color: #06b6d4; font-size: 10px; margin: 0 0 6px 0;">Sintonizador Ambiental:</p>
+                <audio id="audio-lluvia" controls loop preload="auto" style="width: 100%; height: 32px; filter: invert(0.9) hue-rotate(180deg);">
+                    <source src="https://actions.google.com/sounds/v1/weather/rain_water_dripping_softly.ogg?hl=es-419" type="audio/ogg">
+                </audio>
+            </div>
+            <div class="oraculo-box">
+                <p style="color: #a855f7; font-weight: bold; margin-top:0; font-size:13px;">EL ORÁCULO ESTELAR</p>
+                <span class="gem-crystal" onclick="consultarOraculo()">💎</span>
+                <div class="oraculo-resultado" id="oraculo-text">[Oráculo en reposo]: Toca la gema estelar...</div>
+            </div>
+            <div class="web-chat">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <p style="color: #a855f7; font-size: 11px; margin:0;">Canal Divino:</p>
+                    <button onclick="toggleVozWeb()" id="btn-voz" class="cta-button" style="padding: 2px 8px; font-size: 10px; background: #a855f7; color: #fff;">Voz: ON</button>
+                </div>
+                <div class="chat-box" id="chat-log">[Vishnú]: Saludos, viajero...</div>
+                <div class="chat-input-area">
+                    <input type="text" id="user-msg" placeholder="Escribe un mensaje..." onkeypress="if(event.key === 'Enter') enviarWeb();">
+                    <button onclick="enviarWeb()" class="cta-button" style="padding: 6px 12px; font-size: 11px;">Ofrecer</button>
+                </div>
+            </div>
+        </div>
+        <script>
+            let vozActiva = true;
+            function toggleVozWeb() {
+                vozActiva = !vozActiva;
+                const btn = document.getElementById('btn-voz');
+                if(vozActiva) { btn.style.background = "#a855f7"; btn.innerText = "Voz: ON"; }
+                else { btn.style.background = "#334155"; btn.innerText = "Voz: OFF"; window.speechSynthesis.cancel(); }
+            }
+            function hablar(texto) {
+                if (!vozActiva || !('speechSynthesis' in window)) return;
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(texto.replace(/<[^>]*>/g, '').replace(/[*_`]/g, ''));
+                utterance.lang = 'es-ES';
+                window.speechSynthesis.speak(utterance);
+            }
+            async function consultarOraculo() {
+                const caja = document.getElementById('oraculo-text');
+                caja.innerHTML = "Conectando con el sueño cósmico...";
+                try {
+                    const response = await fetch('/api/oraculo_web', { method: 'POST' });
+                    const data = await response.json();
+                    if(data.reply) { caja.innerHTML = `<b>Profecía:</b> "${data.reply}"`; hablar(data.reply); }
+                } catch (err) { caja.innerHTML = "Error al sintonizar."; }
+            }
+            async function enviarWeb() {
+                const input = document.getElementById('user-msg');
+                const log = document.getElementById('chat-log');
+                const texto = input.value.trim();
+                if(!texto) return;
+                log.innerHTML += `<br><span style="color: #f3f4f6;">[Tú]: ${texto}</span>`;
+                input.value = '';
+                try {
+                    const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: texto }) });
+                    const data = await response.json();
+                    if (data.reply) { log.innerHTML += `<br><span style="color: #38bdf8;">[Vishnú]: ${data.reply}</span>`; hablar(data.reply); }
+                } catch (err) { log.innerHTML += `<br><span style="color: #f87171;">[Vishnú]: Error de conexión.</span>`; }
+                log.scrollTop = log.scrollHeight;
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return html_content, 200
 
 @app.route('/api/oraculo_web', methods=['POST'])
 def api_oraculo_web():
@@ -584,7 +694,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await responder_con_voz_o_texto_query(query, texto_completo, reply_markup=reply_markup)
 
 
-# --- MANEJADORES MULTIMEDIA ---
+# --- MANEJADORES MULTIMEDIA Y UBICACIÓN ---
+async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    latitud = update.message.location.latitude
+    longitud = update.message.location.longitude
+    
+    ubicacion_str = f"Ubicación actual registrada: Lat {latitud}, Lon {longitud}"
+    agregar_nota_memoria(user_id, ubicacion_str)
+    user_chats_cache.clear()
+    
+    await update.message.chat.send_action("typing")
+    respuesta = f"¡Eche, mi llave! Ya registré tu ubicación en las estrellas (Lat: {latitud}, Lon: {longitud}). Ahora responderé ajustado a tu entorno y zona local."
+    await responder_con_voz_o_texto(update, respuesta)
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text:
         await update.message.chat.send_action("typing")
@@ -693,6 +816,9 @@ def main():
     application.add_handler(CommandHandler("recordar", recordar_command))
     
     application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Manejadores multimedia y ubicación
+    application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
