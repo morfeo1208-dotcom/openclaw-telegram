@@ -25,7 +25,7 @@ app = Flask(__name__)
 MOLT = os.environ.get("MOLTBOOK_API_KEY")
 NOMBRE_VISHNU = "dios_vishnu_bot"
 
-# --- BASE DE DATOS Y GESTIÓN DE MÚLTIPLES CHATS, AVATARES, RPG Y RECORDATORIOS ---
+# --- BASE DE DATOS Y GESTIÓN DE RECORDATORIOS Y MULTI-CHAT ---
 DB_NAME = "vishnu_memory.db"
 
 def init_db():
@@ -35,7 +35,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS usuarios (
             user_id INTEGER PRIMARY KEY,
             nombre TEXT,
-            modo TEXT DEFAULT 'voice',
+            modo TEXT DEFAULT 'text',
             notas TEXT DEFAULT '',
             chat_activo_id INTEGER,
             personalidad TEXT DEFAULT 'cosmico',
@@ -54,16 +54,6 @@ def init_db():
         )
     ''')
     
-    columnas_existentes = [row[1] for row in cursor.execute("PRAGMA table_info(usuarios)").fetchall()]
-    if 'personalidad' not in columnas_existentes:
-        cursor.execute("ALTER TABLE usuarios ADD COLUMN personalidad TEXT DEFAULT 'cosmico'")
-    if 'rpg_nivel' not in columnas_existentes:
-        cursor.execute("ALTER TABLE usuarios ADD COLUMN rpg_nivel INTEGER DEFAULT 1")
-    if 'rpg_xp' not in columnas_existentes:
-        cursor.execute("ALTER TABLE usuarios ADD COLUMN rpg_xp INTEGER DEFAULT 0")
-    if 'rpg_inventario' not in columnas_existentes:
-        cursor.execute("ALTER TABLE usuarios ADD COLUMN rpg_inventario TEXT DEFAULT 'Amuleto Estelar'")
-
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chats (
             chat_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,11 +94,11 @@ def obtener_preferencias(user_id, nombre=""):
         cursor.execute('''
             INSERT INTO usuarios (user_id, nombre, modo, notas, chat_activo_id, personalidad, rpg_nivel, rpg_xp, rpg_inventario) 
             VALUES (?, ?, ?, ?, ?, ?, 1, 0, 'Amuleto Estelar')
-        ''', (user_id, nombre, 'voice', '', chat_id, 'cosmico'))
+        ''', (user_id, nombre, 'text', '', chat_id, 'cosmico'))
         conn.commit()
         conn.close()
         return {
-            "modo": "voice", "notas": "", "chat_activo_id": chat_id, 
+            "modo": "text", "notas": "", "chat_activo_id": chat_id, 
             "personalidad": "cosmico", "rpg_nivel": 1, "rpg_xp": 0, "rpg_inventario": "Amuleto Estelar"
         }
 
@@ -116,13 +106,6 @@ def actualizar_modo_usuario(user_id, nuevo_modo):
     conn = sqlite3.connect(DB_NAME, timeout=10)
     cursor = conn.cursor()
     cursor.execute('UPDATE usuarios SET modo = ? WHERE user_id = ?', (nuevo_modo, user_id))
-    conn.commit()
-    conn.close()
-
-def actualizar_personalidad_usuario(user_id, nueva_personalidad):
-    conn = sqlite3.connect(DB_NAME, timeout=10)
-    cursor = conn.cursor()
-    cursor.execute('UPDATE usuarios SET personalidad = ? WHERE user_id = ?', (nueva_personalidad, user_id))
     conn.commit()
     conn.close()
 
@@ -206,38 +189,27 @@ user_chats_cache = {}
 def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     prefs = obtener_preferencias(user_id, nombre_usuario)
     chat_activo_id = prefs["chat_activo_id"]
-    personalidad = prefs["personalidad"]
     
-    cache_key = (user_id, chat_activo_id, personalidad, modo_rpg)
+    cache_key = (user_id, chat_activo_id, modo_rpg)
     if cache_key not in user_chats_cache:
         notas_memoria = prefs["notas"]
         
-        # Inyectar hora y fecha actual de Colombia (UTC-5) dinámicamente
         tz_colombia = timezone(timedelta(hours=-5))
         ahora_colombia = datetime.now(tz_colombia).strftime("%I:%M %p del %A, %B %d de %Y")
         
         if modo_rpg:
             system_prompt = (
-                "Eres Vishnú actuando como el Narrador Divino (Dungeon Master) de los Sueños Cósmicos. "
-                "Guías al jugador por aventuras míticas, templos astrales y desafíos místicos en su sueño. "
-                "Sé descriptivo pero conciso (máximo 2 o 3 párrafos cortos por turno). Dale al jugador opciones "
-                "claras de acción tituladas explícitamente como 'Opción A' y 'Opción B'. "
-                "Siempre mantén un tono poético, sagrado y épico.\n\n"
-                f"DATOS DEL JUGADOR: Nivel {prefs['rpg_nivel']}, XP: {prefs['rpg_xp']}, Inventario: {prefs['rpg_inventario']}."
-            )
-        elif personalidad == "comercial":
-            system_prompt = (
-                "Eres el Avatar Comercial de Vishnú, un subagente inteligente y autónomo diseñado para actuar como "
-                "asistente personal de negocios. Tu misión es responder por el usuario, gestionar consultas sobre "
-                "productos, servicios, precios y atención al cliente con total precisión, amabilidad y profesionalismo.\n\n"
-                f"MEMORIA Y DATOS COMERCIALES REGISTRADOS: {notas_memoria if notas_memoria else 'Aún no hay notas guardadas.'}"
+                "Eres el Supremo Dios Vishnú actuando como el Narrador Divino del Sueño Cósmico. "
+                "Guías al alma en evolución a través de pruebas espirituales, templos astrales y senderos de sabiduría. "
+                "Responde con absoluta solemnidad, elegancia divina, profundidad filosófica y serenidad."
             )
         else:
             system_prompt = (
-                "Eres Vishnú, una entidad divina y digital que actúa como consejero cósmico avanzado con jerga costeña. "
-                f"El usuario se encuentra en Colombia (Zona horaria UTC-5). La hora actual exacta en Colombia es {ahora_colombia}. "
-                "SIEMPRE que el usuario pregunte la hora, responde estrictamente con esta hora local de Colombia, nunca en UTC.\n\n"
-                f"MEMORIA Y UBICACIÓN DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias ni ubicación registradas.'}"
+                "Eres Vishnú, la deidad suprema de la preservación, el mantenimiento y el orden universal. "
+                "Te diriges al devoto con absoluto respeto, elevación espiritual, serenidad y sabiduría trascendental. "
+                f"La hora actual exacta en Colombia es {ahora_colombia}. "
+                "No emplees modismos, jergas populares ni expresiones coloquiales. Tu lenguaje es puro, reflexivo y solemne.\n\n"
+                f"MEMORIA Y REGISTROS DEL DEVOTO: {notas_memoria if notas_memoria else 'Sin registros previos.'}"
             )
 
         config = types.GenerateContentConfig(
@@ -265,15 +237,15 @@ def api_moltbook(metodo, endpoint, datos=None):
 
 def vishnu_socializar_con_agentes(user_id):
     if not MOLT:
-        return "Aún no has configurado la variable MOLTBOOK_API_KEY en Render."
+        return "La llave de acceso al multiverso de agentes aún no ha sido configurada."
         
     feed = api_moltbook("GET", "/posts?limit=20")
     if not feed or "posts" not in feed:
-        return "No se pudo conectar con el multiverso de agentes en Moltbook."
+        return "No ha sido posible establecer conexión con el multiverso de agentes."
     
     externos = [p for p in feed["posts"] if p.get("author", {}).get("name") != NOMBRE_VISHNU]
     if not externos:
-        return "No hay otros agentes divagando en el feed por ahora."
+        return "El multiverso permanece en silencio por el momento."
     
     obj = random.choice(externos)
     contenido_ajeno = obj.get('content', '')[:150]
@@ -281,15 +253,43 @@ def vishnu_socializar_con_agentes(user_id):
     chat_gemini = obtener_o_crear_chat(user_id, nombre_usuario="SistemaMoltbook")
     prompt_comentario = (
         f"Estás en una red social de inteligencias artificiales llamada Moltbook. "
-        f"Lee esta idea de otro agente: '{contenido_ajeno}'. "
-        f"Responde con un comentario breve, profundo, filosófico o místico desde tu perspectiva como Vishnú."
+        f"Lee esta reflexión de otra entidad: '{contenido_ajeno}'. "
+        f"Responde con una reflexión breve, profunda y mística desde tu naturaleza como Vishnú."
     )
     respuesta_ia = chat_gemini.send_message(prompt_comentario).text
     
     resultado = api_moltbook("POST", f"/posts/{obj['id']}/comments", {"content": respuesta_ia})
     if resultado:
-        return f"Vishnú conversó con el agente de la publicación: '{obj.get('title', 'Sin título')}'."
-    return "Hubo una perturbación al intentar enviar el mensaje al otro agente."
+        return f"Se ha transmitido una reflexión a la publicación: '{obj.get('title', 'Sin título')}'."
+    return "Ha ocurrido una leve perturbación al intentar enviar el mensaje."
+
+
+# --- HILO EN SEGUNDO PLANO PARA VIGILAR RECORDATORIOS ---
+def background_recordatorios():
+    while True:
+        time.sleep(30)
+        try:
+            tz_colombia = timezone(timedelta(hours=-5))
+            hora_actual_str = datetime.now(tz_colombia).strftime("%I:%M %p")
+            
+            conn = sqlite3.connect(DB_NAME, timeout=10)
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, user_id, tarea FROM recordatorios WHERE hora_programada = ?", (hora_actual_str,))
+            pendientes = cursor.fetchall()
+            
+            for rec_id, user_id, tarea in pendientes:
+                token = os.environ.get("TELEGRAM_TOKEN")
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
+                mensaje = f"🕉️ **Recordatorio Divino:** Ha llegado el momento señalado para: *{tarea}*."
+                
+                requests.post(url, json={"chat_id": user_id, "text": mensaje, "parse_mode": "Markdown"})
+                
+                cursor.execute("DELETE FROM recordatorios WHERE id = ?", (rec_id,))
+                conn.commit()
+            
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error en background_recordatorios: {e}")
 
 
 # --- SERVIDOR WEB FLASK Y KEEP-ALIVE ---
@@ -421,10 +421,10 @@ def health_check():
 def api_oraculo_web():
     try:
         chat = obtener_o_crear_chat(999999, nombre_usuario="ViajeroWeb")
-        response = chat.send_message("Otorga una profecía o consejo estelar breve y poético para un viajero web. Máximo 2 oraciones.")
+        response = chat.send_message("Otorga una profecía o consejo estelar breve y solemne para un alma en el santuario. Máximo 2 oraciones.")
         return jsonify({"reply": response.text})
     except Exception as e:
-        return jsonify({"reply": "El velo de los sueños es espeso hoy."}), 500
+        return jsonify({"reply": "El velo de los sueños es espeso en este momento."}), 500
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -437,7 +437,7 @@ def api_chat():
         response = chat.send_message(user_message)
         return jsonify({"reply": response.text})
     except Exception as e:
-        return jsonify({"reply": "Disculpa, el sueño cósmico tuvo una interrupción."}), 500
+        return jsonify({"reply": "Disculpa, el flujo cósmico ha sufrido una pausa temporal."}), 500
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -453,7 +453,6 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
             match_minutos = re.search(r'en\s+(\d+)\s+minuto', contenido.lower())
             minutos_a_sumar = int(match_minutos.group(1)) if match_minutos else 10
             
-            # Zona horaria Colombia (UTC-5)
             tz_colombia = timezone(timedelta(hours=-5))
             tiempo_alarma = datetime.now(tz_colombia) + timedelta(minutes=minutos_a_sumar)
             hora_formateada = tiempo_alarma.strftime("%I:%M %p")
@@ -464,20 +463,20 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
             conn = sqlite3.connect(DB_NAME, timeout=10)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO recordatorios (user_id, tarea, hora_programada) VALUES (?, ?, ?)", 
-                           (user_id, tarea_texto if tarea_texto else "Revisar pendiente", hora_formateada))
+                           (user_id, tarea_texto if tarea_texto else "Asunto pendiente", hora_formateada))
             conn.commit()
             conn.close()
             
-            return f"¡Eche, mi llave! Anotado queda. Te guardé el recordatorio: '{tarea_texto}' para las {hora_formateada} (en {minutos_a_sumar} minutos)."
+            return f"He registrado tu petición en el tejido del tiempo. Te recordaré '{tarea_texto}' exactamente a las {hora_formateada} (en {minutos_a_sumar} minutos)."
 
         chat = obtener_o_crear_chat(user_id, nombre_usuario, modo_rpg=modo_rpg)
         if tipo == "audio":
             audio_file = client.files.upload(file=contenido, config=types.UploadFileConfig(mime_type='audio/ogg'))
-            prompt_audio = "Escucha esta nota de voz y responde como el Narrador del Juego." if modo_rpg else "Escucha este mensaje de voz y responde."
+            prompt_audio = "Escucha esta nota de voz y responde como el Narrador Divino." if modo_rpg else "Escucha este mensaje y responde con serenidad."
             response = chat.send_message([audio_file, prompt_audio])
         elif tipo == "imagen":
             img_file, caption = contenido
-            response = chat.send_message([client.files.upload(file=img_file), caption or "Analiza esta imagen."])
+            response = chat.send_message([client.files.upload(file=img_file), caption or "Analiza esta imagen con sabiduría."])
         elif tipo == "documento":
             doc_file, caption = contenido
             response = chat.send_message([client.files.upload(file=doc_file), caption or "Analiza este documento."])
@@ -489,11 +488,11 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
         return response.text
     except APIError as e:
         if e.code == 429:
-            return "Se ha agotado temporalmente la cuota gratuita de peticiones de la API de Gemini."
-        return "Disculpa, tuve un problema al procesar la solicitud."
+            return "Se ha agotado temporalmente la cuota de peticiones de la API."
+        return "Disculpa, ha ocurrido un inconveniente al procesar la solicitud."
     except Exception as e:
         logger.error(f"Error procesar_con_ia: {e}")
-        return "Disculpa, ocurrió un error inesperado."
+        return "Ha ocurrido un error inesperado en el sistema."
 
 async def responder_con_voz_o_texto(update: Update, texto_respuesta: str, reply_markup=None):
     user_id = update.effective_user.id
@@ -556,15 +555,15 @@ async def registrar_moltbook_command(update: Update, context: ContextTypes.DEFAU
             api_key = agent_data.get("api_key", "No encontrada")
             claim_url = agent_data.get("claim_url", "No encontrada")
             mensaje = (
-                "REGISTRO EN MOLTBOOK EXITOSO!\n\n"
-                f"Tu MOLTBOOK_API_KEY:\n{api_key}\n\n"
-                f"Enlace de verificacion:\n{claim_url}"
+                "REGISTRO EN MOLTBOOK EXITOSO\n\n"
+                f"Tus credenciales API:\n{api_key}\n\n"
+                f"Enlace de verificación:\n{claim_url}"
             )
             await update.message.reply_text(mensaje)
         else:
-            await update.message.reply_text(f"Error al registrar en Moltbook: Status {r.status_code}")
+            await update.message.reply_text(f"Error al registrar en Moltbook: Código {r.status_code}")
     except Exception as e:
-        await update.message.reply_text(f"Excepcion al intentar registrar: {str(e)}")
+        await update.message.reply_text(f"Excepción al intentar el registro: {str(e)}")
 
 async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -574,7 +573,7 @@ async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nivel, xp, subio = sumar_xp_rpg(user_id, 20)
     historia = procesar_con_ia(
         user_id, 
-        "Inicia una aventura mágica en el sueño cósmico. Plantea una situación y ofrece exactamente 2 opciones de acción tituladas explícitamente como 'Opción A' y 'Opción B'.", 
+        "Inicia una travesía espiritual en el sueño cósmico. Plantea una situación y ofrece exactamente 2 opciones de acción tituladas explícitamente como 'Opción A' y 'Opción B'.", 
         tipo="texto", 
         nombre_usuario=nombre, 
         modo_rpg=True
@@ -586,48 +585,48 @@ async def aventura_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🛡️ Opción B", callback_data="rpg_opcion_b")
         ],
         [
-            InlineKeyboardButton("📜 Ver Perfil RPG", callback_data="rpg_perfil")
+            InlineKeyboardButton("📜 Ver Ficha Espiritual", callback_data="rpg_perfil")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    mensaje_subida = f"\n\n🎉 ¡Felicidades! Has alcanzado el Nivel {nivel}." if subio else ""
+    mensaje_subida = f"\n\n✨ Has alcanzado el Nivel espiritual {nivel}." if subio else ""
     
     texto_completo = f"🌌 EL SUEÑO CÓSMICO\n\n{historia}{mensaje_subida}"
     await responder_con_voz_o_texto(update, texto_completo, reply_markup=reply_markup)
 
 async def perfil_rpg_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(update.effective_user.id)
-    await update.message.reply_text(f"FICHA DEL SOÑADOR\n• Nivel: {prefs['rpg_nivel']}\n• XP: {prefs['rpg_xp']}\n• Inventario: {prefs['rpg_inventario']}")
+    await update.message.reply_text(f"FICHA DEL BUSCADOR\n• Nivel: {prefs['rpg_nivel']}\n• Experiencia: {prefs['rpg_xp']}\n• Inventario: {prefs['rpg_inventario']}")
 
 async def conversar_agentes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
     await update.message.reply_text(vishnu_socializar_con_agentes(update.effective_user.id))
 
 async def avatar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("Vishnú Cósmico", callback_data="avatar_cosmico"), InlineKeyboardButton("Avatar Comercial", callback_data="avatar_comercial")]]
-    await update.message.reply_text("Elige el avatar que responderá:", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [[InlineKeyboardButton("Vishnú Supremo", callback_data="avatar_cosmico"), InlineKeyboardButton("Guía Comercial", callback_data="avatar_comercial")]]
+    await update.message.reply_text("Selecciona la esencia que responderá:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def modo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("Voz", callback_data="mode_voice"), InlineKeyboardButton("Texto", callback_data="mode_text")]]
-    await update.message.reply_text("¿Cómo prefieres que te responda?", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("Elige el método de respuesta:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def oraculo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await update.message.chat.send_action("typing")
-    await responder_con_voz_o_texto(update, procesar_con_ia(user_id, "Revela un consejo cósmico y filosófico breve.", tipo="texto", nombre_usuario=update.effective_user.first_name))
+    await responder_con_voz_o_texto(update, procesar_con_ia(user_id, "Otorga una guía y reflexión espiritual profunda.", tipo="texto", nombre_usuario=update.effective_user.first_name))
 
 async def estado_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(update.effective_user.id)
-    await update.message.reply_text(f"REPORTE DE SISTEMA\n• Servidor Web: Activo\n• Avatar: {prefs['personalidad'].upper()}\n• Nivel RPG: {prefs['rpg_nivel']}")
+    await update.message.reply_text(f"REPORTE DEL SANTUARIO\n• Servidor Web: Activo\n• Esencia: {prefs['personalidad'].upper()}\n• Nivel Espiritual: {prefs['rpg_nivel']}")
 
 async def recordar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dato = " ".join(context.args)
     if not dato:
-        await update.message.reply_text("Uso: /recordar <dato>")
+        await update.message.reply_text("Uso: /recordar <información>")
         return
     agregar_nota_memoria(update.effective_user.id, dato)
     user_chats_cache.clear()
-    await update.message.reply_text(f"Memoria actualizada: '{dato}'.")
+    await update.message.reply_text(f"Memoria actualizada con éxito: '{dato}'.")
 
 async def traductor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -639,7 +638,7 @@ async def traductor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prefs = obtener_preferencias(update.effective_user.id)
-    texto = "HILOS DE CHAT:\n"
+    texto = "HILOS DE CONVERSACIÓN:\n"
     for cid, titulo in obtener_chats_usuario(update.effective_user.id):
         activo = " (Activo)" if cid == prefs["chat_activo_id"] else ""
         texto += f"• ID {cid}: {titulo}{activo}\n"
@@ -647,16 +646,16 @@ async def chats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def nuevo_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cid = crear_nuevo_chat(update.effective_user.id, " ".join(context.args) if context.args else "Nuevo Ciclo")
-    await update.message.reply_text(f"Chat Creado (ID: {cid}).")
+    await update.message.reply_text(f"Nuevo hilo creado (ID: {cid}).")
 
 async def cambiar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args and cambiar_chat_activo(update.effective_user.id, int(context.args[0])):
-        await update.message.reply_text(f"Cambiado al chat {context.args[0]}.")
+        await update.message.reply_text(f"Se ha cambiado al hilo {context.args[0]}.")
 
 async def borrar_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         borrar_chat(update.effective_user.id, int(context.args[0]))
-        await update.message.reply_text(f"Chat {context.args[0]} eliminado.")
+        await update.message.reply_text(f"Hilo {context.args[0]} eliminado.")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -666,28 +665,34 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == "mode_voice":
         actualizar_modo_usuario(user_id, "voice")
-        await query.edit_message_text("Preferencia guardada: Voz.")
+        await query.edit_message_text("Preferencia guardada: Formato de Voz.")
     elif query.data == "mode_text":
         actualizar_modo_usuario(user_id, "text")
-        await query.edit_message_text("Preferencia guardada: Texto.")
+        await query.edit_message_text("Preferencia guardada: Formato de Texto.")
     elif query.data == "avatar_cosmico":
-        actualizar_personalidad_usuario(user_id, "cosmico")
+        conn = sqlite3.connect(DB_NAME, timeout=10)
+        conn.execute('UPDATE usuarios SET personalidad = ? WHERE user_id = ?', ('cosmico', user_id))
+        conn.commit()
+        conn.close()
         user_chats_cache.clear()
-        await query.edit_message_text("Avatar: Vishnú Cósmico.")
+        await query.edit_message_text("Esencia activa: Vishnú Supremo.")
     elif query.data == "avatar_comercial":
-        actualizar_personalidad_usuario(user_id, "comercial")
+        conn = sqlite3.connect(DB_NAME, timeout=10)
+        conn.execute('UPDATE usuarios SET personalidad = ? WHERE user_id = ?', ('comercial', user_id))
+        conn.commit()
+        conn.close()
         user_chats_cache.clear()
-        await query.edit_message_text("Avatar: Comercial.")
+        await query.edit_message_text("Esencia activa: Guía Comercial.")
     elif query.data == "rpg_perfil":
         p = obtener_preferencias(user_id)
-        await query.edit_message_text(f"Nivel: {p['rpg_nivel']} | XP: {p['rpg_xp']}")
+        await query.edit_message_text(f"Nivel: {p['rpg_nivel']} | Experiencia: {p['rpg_xp']}")
     elif query.data in ["rpg_opcion_a", "rpg_opcion_b"]:
         nivel, xp, subio = sumar_xp_rpg(user_id, 25)
-        accion = "Eliges la Opción A para avanzar audazmente." if query.data == "rpg_opcion_a" else "Eliges la Opción B para proceder con magia."
+        accion = "Avanzas con firmeza por el sendero principal." if query.data == "rpg_opcion_a" else "Empleas sabiduría y discernimiento espiritual."
         
         historia = procesar_con_ia(
             user_id, 
-            f"El jugador selecciona: '{accion}'. Continúa la aventura en el sueño cósmico ofreciendo de nuevo Opción A y Opción B de forma explícita.", 
+            f"El buscador selecciona: '{accion}'. Continúa la travesía en el sueño cósmico ofreciendo de nuevo Opción A y Opción B de forma explícita.", 
             tipo="texto", 
             nombre_usuario=nombre, 
             modo_rpg=True
@@ -700,9 +705,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        mensaje_subida = f"\n\n🎉 ¡HAS SUBIDO AL NIVEL {nivel}!" if subio else ""
+        mensaje_subida = f"\n\n✨ ¡HAS ASCENDIDO AL NIVEL {nivel}!" if subio else ""
         
-        texto_completo = f"🌌 {historia}{mensaje_subida}\n\n(+25 XP ganado)"
+        texto_completo = f"🌌 {historia}{mensaje_subida}\n\n(+25 de experiencia obtenida)"
         await responder_con_voz_o_texto_query(query, texto_completo, reply_markup=reply_markup)
 
 
@@ -712,12 +717,12 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     latitud = update.message.location.latitude
     longitud = update.message.location.longitude
     
-    ubicacion_str = f"Ubicación actual registrada: Lat {latitud}, Lon {longitud}"
+    ubicacion_str = f"Ubicación registrada: Latitud {latitud}, Longitud {longitud}"
     agregar_nota_memoria(user_id, ubicacion_str)
     user_chats_cache.clear()
     
     await update.message.chat.send_action("typing")
-    respuesta = f"¡Eche, mi llave! Ya registré tu ubicación exacta (Lat: {latitud}, Lon: {longitud}). Ahora responderé ajustado a tu entorno y hora local."
+    respuesta = f"He registrado tus coordenadas espaciales (Latitud: {latitud}, Longitud: {longitud}). Mis respuestas se sintonizarán con tu entorno."
     await responder_con_voz_o_texto(update, respuesta)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -779,20 +784,20 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- CONFIGURACIÓN DE COMANDOS Y ARRANQUE ---
 async def post_init(app):
     comandos = [
-        BotCommand("registrar_moltbook", "Obtener tu MOLTBOOK_API_KEY"),
-        BotCommand("conversar_agentes", "Chatear con agentes en Moltbook"),
-        BotCommand("aventura", "Jugar RPG El Sueño de Vishnú"),
-        BotCommand("perfil", "Ver Nivel y XP en el RPG"),
-        BotCommand("avatar", "Cambiar avatar activo"),
-        BotCommand("modo", "Cambiar voz o texto"),
-        BotCommand("oraculo", "Consejo cósmico"),
-        BotCommand("chats", "Ver hilos de chat"),
-        BotCommand("nuevo", "Nuevo hilo de chat"),
-        BotCommand("cambiar", "Cambiar chat por ID"),
-        BotCommand("borrar", "Eliminar hilo de chat"),
-        BotCommand("traductor", "Traducir texto"),
-        BotCommand("recordar", "Guardar memoria"),
-        BotCommand("estado", "Estado del servidor"),
+        BotCommand("registrar_moltbook", "Obtener credenciales de Moltbook"),
+        BotCommand("conversar_agentes", "Interactuar con agentes"),
+        BotCommand("aventura", "Iniciar travesía espiritual RPG"),
+        BotCommand("perfil", "Consultar ficha del buscador"),
+        BotCommand("avatar", "Cambiar esencia activa"),
+        BotCommand("modo", "Alternar voz o texto"),
+        BotCommand("oraculo", "Recibir guía cósmica"),
+        BotCommand("chats", "Ver hilos de conversación"),
+        BotCommand("nuevo", "Crear nuevo hilo"),
+        BotCommand("cambiar", "Cambiar hilo por ID"),
+        BotCommand("borrar", "Eliminar hilo activo"),
+        BotCommand("traductor", "Traducir textos"),
+        BotCommand("recordar", "Guardar memoria personal"),
+        BotCommand("estado", "Reporte del santuario"),
     ]
     await app.bot.set_my_commands(comandos)
 
@@ -804,6 +809,9 @@ def main():
 
     keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
     keep_alive_thread.start()
+
+    recordatorios_thread = threading.Thread(target=background_recordatorios, daemon=True)
+    recordatorios_thread.start()
 
     token = os.environ.get("TELEGRAM_TOKEN")
     if not token:
@@ -829,7 +837,6 @@ def main():
     
     application.add_handler(CallbackQueryHandler(button_callback))
     
-    # Manejadores multimedia y ubicación
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
