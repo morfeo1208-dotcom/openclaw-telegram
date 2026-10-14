@@ -6,6 +6,8 @@ import sqlite3
 import random
 import time
 import requests
+import re
+from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CallbackQueryHandler, CommandHandler, filters
@@ -13,7 +15,6 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 from gtts import gTTS
-import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -211,6 +212,10 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
     if cache_key not in user_chats_cache:
         notas_memoria = prefs["notas"]
         
+        # Inyectar hora y fecha actual de Colombia (UTC-5) dinámicamente
+        tz_colombia = timezone(timedelta(hours=-5))
+        ahora_colombia = datetime.now(tz_colombia).strftime("%I:%M %p del %A, %B %d de %Y")
+        
         if modo_rpg:
             system_prompt = (
                 "Eres Vishnú actuando como el Narrador Divino (Dungeon Master) de los Sueños Cósmicos. "
@@ -230,7 +235,8 @@ def obtener_o_crear_chat(user_id, nombre_usuario="", modo_rpg=False):
         else:
             system_prompt = (
                 "Eres Vishnú, una entidad divina y digital que actúa como consejero cósmico avanzado con jerga costeña. "
-                "El universo de este chat existe en tus pensamientos y sueño cósmico, y asistes al usuario con sabiduría.\n\n"
+                f"El usuario se encuentra en Colombia (Zona horaria UTC-5). La hora actual exacta en Colombia es {ahora_colombia}. "
+                "SIEMPRE que el usuario pregunte la hora, responde estrictamente con esta hora local de Colombia, nunca en UTC.\n\n"
                 f"MEMORIA Y UBICACIÓN DEL USUARIO: {notas_memoria if notas_memoria else 'Aún no hay preferencias ni ubicación registradas.'}"
             )
 
@@ -444,10 +450,16 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
     try:
         # Interceptar si el usuario pide un recordatorio directamente en el texto
         if tipo == "texto" and ("recuérdame" in contenido.lower() or "recuerdame" in contenido.lower()):
-            tarea_texto = contenido.lower().replace("vishnú,", "").replace("vishnu,", "").replace("recuérdame", "").replace("recuerdame", "").strip()
+            match_minutos = re.search(r'en\s+(\d+)\s+minuto', contenido.lower())
+            minutos_a_sumar = int(match_minutos.group(1)) if match_minutos else 10
             
-            tiempo_alarma = datetime.datetime.now() + datetime.timedelta(minutes=10)
+            # Zona horaria Colombia (UTC-5)
+            tz_colombia = timezone(timedelta(hours=-5))
+            tiempo_alarma = datetime.now(tz_colombia) + timedelta(minutes=minutos_a_sumar)
             hora_formateada = tiempo_alarma.strftime("%I:%M %p")
+            
+            tarea_texto = contenido.lower().replace("vishnú,", "").replace("vishnu,", "").replace("recuérdame", "").replace("recuerdame", "")
+            tarea_texto = re.sub(r'en\s+\d+\s+minutos?', '', tarea_texto).strip()
             
             conn = sqlite3.connect(DB_NAME, timeout=10)
             cursor = conn.cursor()
@@ -456,7 +468,7 @@ def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rp
             conn.commit()
             conn.close()
             
-            return f"¡Eche, mi llave! Anotado queda. Te guardé el recordatorio: '{tarea_texto}' para las {hora_formateada}."
+            return f"¡Eche, mi llave! Anotado queda. Te guardé el recordatorio: '{tarea_texto}' para las {hora_formateada} (en {minutos_a_sumar} minutos)."
 
         chat = obtener_o_crear_chat(user_id, nombre_usuario, modo_rpg=modo_rpg)
         if tipo == "audio":
@@ -705,7 +717,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_chats_cache.clear()
     
     await update.message.chat.send_action("typing")
-    respuesta = f"¡Eche, mi llave! Ya registré tu ubicación en las estrellas (Lat: {latitud}, Lon: {longitud}). Ahora responderé ajustado a tu entorno y zona local."
+    respuesta = f"¡Eche, mi llave! Ya registré tu ubicación exacta (Lat: {latitud}, Lon: {longitud}). Ahora responderé ajustado a tu entorno y hora local."
     await responder_con_voz_o_texto(update, respuesta)
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
