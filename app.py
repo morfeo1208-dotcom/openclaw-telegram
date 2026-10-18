@@ -1,4 +1,4 @@
-Import os
+import os
 import threading
 import logging
 import tempfile
@@ -448,7 +448,6 @@ def run_flask():
 # --- IA GEMINI Y MANEJO DE CHATS TELEGRAM ---
 def procesar_con_ia(user_id, contenido, tipo="texto", nombre_usuario="", modo_rpg=False) -> str:
     try:
-        # Interceptar si el usuario pide un recordatorio directamente en el texto
         if tipo == "texto" and ("recuérdame" in contenido.lower() or "recuerdame" in contenido.lower()):
             match_minutos = re.search(r'en\s+(\d+)\s+minuto', contenido.lower())
             minutos_a_sumar = int(match_minutos.group(1)) if match_minutos else 10
