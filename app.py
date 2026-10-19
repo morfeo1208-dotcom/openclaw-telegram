@@ -7,6 +7,7 @@ import random
 import time
 import requests
 import re
+import hmac
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -21,9 +22,12 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE MOLTBOOK PARA AGENTES ---
+# --- CONFIGURACIÓN DE MOLTBOOK Y AGENTE MÓVIL ---
 MOLT = os.environ.get("MOLTBOOK_API_KEY")
 NOMBRE_VISHNU = "dios_vishnu_bot"
+MOBILE_TOKEN = os.environ.get("VISHNU_MOBILE_TOKEN", "")
+MOBILE_USER_ID = int(os.environ.get("VISHNU_MOBILE_USER_ID", "999999"))
+MOBILE_NAME = os.environ.get("VISHNU_MOBILE_NAME", "Andy")
 
 # --- BASE DE DATOS Y GESTIÓN DE RECORDATORIOS Y MULTI-CHAT ---
 DB_NAME = "vishnu_memory.db"
@@ -438,6 +442,31 @@ def api_chat():
         return jsonify({"reply": response.text})
     except Exception as e:
         return jsonify({"reply": "Disculpa, el flujo cósmico ha sufrido una pausa temporal."}), 500
+
+
+# --- NUEVO ENDPOINT AUTENTICADO PARA LA APLICACIÓN FLOTANTE ANDROID ---
+@app.route('/api/mobile/chat', methods=['POST'])
+def api_mobile_chat():
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return jsonify({"reply": "Acceso denegado: Cabecera inválida."}), 401
+    
+    token = auth_header.split(" ", 1)[1]
+    if not MOBILE_TOKEN or not hmac.compare_digest(token, MOBILE_TOKEN):
+        return jsonify({"reply": "Acceso denegado: Credenciales no válidas."}), 403
+    
+    data = request.get_json() or {}
+    user_message = data.get("message", "").strip()
+    if not user_message:
+        return jsonify({"reply": "No se ha recibido ningún mensaje."}), 400
+        
+    try:
+        respuesta = procesar_con_ia(MOBILE_USER_ID, user_message, tipo="texto", nombre_usuario=MOBILE_NAME)
+        return jsonify({"reply": respuesta})
+    except Exception as e:
+        logger.error(f"Error en api_mobile_chat: {e}")
+        return jsonify({"reply": "Inconveniente al procesar la señal en la red móvil."}), 500
+
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
